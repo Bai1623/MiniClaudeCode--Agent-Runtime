@@ -106,3 +106,30 @@ class ArtifactStore:
 
     def read_plan(self, artifacts: RunArtifacts) -> dict[str, Any]:
         return json.loads(artifacts.plan_path.read_text(encoding="utf-8"))
+
+    def write_task(self, artifacts: RunArtifacts, task_id: str, content: str) -> Path:
+        path = artifacts.tasks_dir / f"{task_id}.md"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def write_evaluator_report(
+        self,
+        artifacts: RunArtifacts,
+        task_id: str,
+        report: dict[str, Any],
+    ) -> Path:
+        path = artifacts.evaluator_reports_dir / f"{task_id}.json"
+        path.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return path
+
+    def append_event(self, artifacts: RunArtifacts, event: dict[str, Any]) -> Path:
+        with artifacts.events_path.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(event, ensure_ascii=False) + "\n")
+        return artifacts.events_path
+
+    def write_final_report(self, artifacts: RunArtifacts, report: str) -> Path:
+        artifacts.final_report_path.write_text(report, encoding="utf-8")
+        return artifacts.final_report_path

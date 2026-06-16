@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -117,6 +118,58 @@ class TestArtifactStore(unittest.TestCase):
 
             self.assertEqual(path, artifacts.plan_path)
             self.assertEqual(loaded, plan)
+
+    def test_write_task(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            artifacts = store.create_run()
+            path = store.write_task(artifacts, "task-001", "implement ArtifactStore")
+
+            self.assertEqual(path, artifacts.tasks_dir / "task-001.md")
+            self.assertEqual(path.read_text(encoding="utf-8"), "implement ArtifactStore")
+
+    def test_write_evaluator_report(self):
+        report = {
+            "task_id": "task-001",
+            "status": "passed",
+            "checks": [{"name": "unit_tests", "status": "passed"}],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            artifacts = store.create_run()
+            path = store.write_evaluator_report(artifacts, "task-001", report)
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(path, artifacts.evaluator_reports_dir / "task-001.json")
+            self.assertEqual(loaded, report)
+
+    def test_append_event_writes_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            artifacts = store.create_run()
+            path = store.append_event(artifacts, {"type": "run_created"})
+            store.append_event(artifacts, {"type": "task_started", "task_id": "task-001"})
+
+            events = [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(path, artifacts.events_path)
+        self.assertEqual(events, [
+            {"type": "run_created"},
+            {"type": "task_started", "task_id": "task-001"},
+        ])
+
+    def test_write_final_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            artifacts = store.create_run()
+            path = store.write_final_report(artifacts, "# Final Report\n\nAll checks passed.")
+
+            self.assertEqual(path, artifacts.final_report_path)
+            self.assertEqual(path.read_text(encoding="utf-8"), "# Final Report\n\nAll checks passed.")
 
 
 if __name__ == "__main__":
