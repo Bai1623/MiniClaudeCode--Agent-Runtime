@@ -37,6 +37,14 @@ class GrepTool(Tool):
             "required": ["pattern"],
         }
 
+    @property
+    def retryable(self) -> bool:
+        return True
+
+    @property
+    def is_read_only(self) -> bool:
+        return True
+
     def execute(self, params: dict[str, Any]) -> ToolResult:
         pattern = params["pattern"]
         search_path = Path(params.get("path", ".")).expanduser().resolve()

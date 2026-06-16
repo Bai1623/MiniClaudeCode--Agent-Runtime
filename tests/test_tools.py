@@ -13,6 +13,7 @@ from miniclaudecode.tools.file_write import FileWriteTool
 from miniclaudecode.tools.file_edit import FileEditTool
 from miniclaudecode.tools.glob_tool import GlobTool
 from miniclaudecode.tools.grep_tool import GrepTool
+from miniclaudecode.runtime.tool_loader import discover_tools
 
 
 class TestToolRegistry(unittest.TestCase):
@@ -36,6 +37,34 @@ class TestToolRegistry(unittest.TestCase):
         registry = ToolRegistry.default()
         self.assertIsNotNone(registry.get("bash"))
         self.assertIsNone(registry.get("nonexistent"))
+
+    def test_duplicate_tool_name_rejected(self):
+        registry = ToolRegistry()
+        registry.register(BashTool())
+        with self.assertRaisesRegex(ValueError, "Duplicate tool name: bash"):
+            registry.register(BashTool())
+
+    def test_discovery_loads_builtin_tools(self):
+        tools = discover_tools()
+        names = {tool.name for tool in tools}
+        self.assertEqual(names, {"bash", "read_file", "write_file", "edit_file", "glob", "grep"})
+
+    def test_default_tool_runtime_properties(self):
+        registry = ToolRegistry.default()
+        for name in ("bash", "write_file", "edit_file"):
+            tool = registry.get(name)
+            self.assertIsNotNone(tool)
+            self.assertEqual(tool.timeout_seconds, 30)
+            self.assertFalse(tool.retryable)
+            self.assertFalse(tool.is_read_only)
+
+    def test_read_only_tools_are_retryable(self):
+        registry = ToolRegistry.default()
+        for name in ("read_file", "glob", "grep"):
+            tool = registry.get(name)
+            self.assertIsNotNone(tool)
+            self.assertTrue(tool.retryable)
+            self.assertTrue(tool.is_read_only)
 
 
 class TestBashTool(unittest.TestCase):
@@ -63,6 +92,11 @@ class TestBashTool(unittest.TestCase):
 class TestFileReadTool(unittest.TestCase):
     def setUp(self):
         self.tool = FileReadTool()
+
+    def test_runtime_properties(self):
+        self.assertTrue(self.tool.retryable)
+        self.assertTrue(self.tool.is_read_only)
+        self.assertEqual(self.tool.timeout_seconds, 30)
 
     def test_read_existing_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -202,6 +236,11 @@ class TestGlobTool(unittest.TestCase):
     def setUp(self):
         self.tool = GlobTool()
 
+    def test_runtime_properties(self):
+        self.assertTrue(self.tool.retryable)
+        self.assertTrue(self.tool.is_read_only)
+        self.assertEqual(self.tool.timeout_seconds, 30)
+
     def test_find_python_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "a.py").write_text("pass")
@@ -215,6 +254,11 @@ class TestGlobTool(unittest.TestCase):
 class TestGrepTool(unittest.TestCase):
     def setUp(self):
         self.tool = GrepTool()
+
+    def test_runtime_properties(self):
+        self.assertTrue(self.tool.retryable)
+        self.assertTrue(self.tool.is_read_only)
+        self.assertEqual(self.tool.timeout_seconds, 30)
 
     def test_search_in_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:

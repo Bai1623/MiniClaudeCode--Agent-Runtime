@@ -39,6 +39,14 @@ class FileReadTool(Tool):
             "required": ["path"],
         }
 
+    @property
+    def retryable(self) -> bool:
+        return True
+
+    @property
+    def is_read_only(self) -> bool:
+        return True
+
     def execute(self, params: dict[str, Any]) -> ToolResult:
         filepath = Path(params["path"]).expanduser()
         if not filepath.exists():

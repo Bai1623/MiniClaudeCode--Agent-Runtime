@@ -15,6 +15,8 @@ from typing import Any
 class ToolResult:
     output: str
     is_error: bool = False
+    error_type: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class Tool(ABC):
@@ -37,6 +39,18 @@ class Tool(ABC):
     @property
     @abstractmethod
     def input_schema(self) -> dict[str, Any]: ...
+
+    @property
+    def timeout_seconds(self) -> int:
+        return 30
+
+    @property
+    def retryable(self) -> bool:
+        return False
+
+    @property
+    def is_read_only(self) -> bool:
+        return False
 
     def check_permissions(self, params: dict[str, Any]) -> str | None:
         """Return None if allowed, or a denial reason string."""
@@ -64,6 +78,8 @@ class ToolRegistry:
         self._tools: dict[str, Tool] = {}
 
     def register(self, tool: Tool) -> None:
+        if tool.name in self._tools:
+            raise ValueError(f"Duplicate tool name: {tool.name}")
         self._tools[tool.name] = tool
 
     def get(self, name: str) -> Tool | None:
@@ -77,14 +93,9 @@ class ToolRegistry:
 
     @classmethod
     def default(cls) -> "ToolRegistry":
-        from .bash_tool import BashTool
-        from .file_read import FileReadTool
-        from .file_write import FileWriteTool
-        from .file_edit import FileEditTool
-        from .glob_tool import GlobTool
-        from .grep_tool import GrepTool
+        from miniclaudecode.runtime.tool_loader import discover_tools
 
         registry = cls()
-        for tool_cls in (BashTool, FileReadTool, FileWriteTool, FileEditTool, GlobTool, GrepTool):
-            registry.register(tool_cls())
+        for tool in discover_tools():
+            registry.register(tool)
         return registry

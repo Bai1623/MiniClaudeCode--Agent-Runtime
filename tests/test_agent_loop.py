@@ -86,10 +86,14 @@ class TestToolResultDataclass(unittest.TestCase):
     def test_default_not_error(self):
         r = ToolResult(output="ok")
         self.assertFalse(r.is_error)
+        self.assertIsNone(r.error_type)
+        self.assertEqual(r.metadata, {})
 
     def test_error_flag(self):
-        r = ToolResult(output="fail", is_error=True)
+        r = ToolResult(output="fail", is_error=True, error_type="execution_error", metadata={"tool": "bash"})
         self.assertTrue(r.is_error)
+        self.assertEqual(r.error_type, "execution_error")
+        self.assertEqual(r.metadata["tool"], "bash")
 
 
 if __name__ == "__main__":
