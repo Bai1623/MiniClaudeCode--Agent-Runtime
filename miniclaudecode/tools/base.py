@@ -42,6 +42,10 @@ class Tool(ABC):
         """Return None if allowed, or a denial reason string."""
         return None
 
+    def preview(self, params: dict[str, Any]) -> ToolResult | None:
+        """Return a preview of the changes this tool would make, if applicable."""
+        return None
+
     @abstractmethod
     def execute(self, params: dict[str, Any]) -> ToolResult: ...
 

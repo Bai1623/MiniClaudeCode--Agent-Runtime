@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Tool, ToolResult
+from .diff_utils import render_unified_diff
 
 
 class FileWriteTool(Tool):
@@ -31,12 +32,24 @@ class FileWriteTool(Tool):
             "required": ["path", "content"],
         }
 
-    def execute(self, params: dict[str, Any]) -> ToolResult:
+    def preview(self, params: dict[str, Any]) -> ToolResult:
         filepath = Path(params["path"]).expanduser()
         content = params.get("content", "")
         try:
+            old_content = filepath.read_text(errors="replace") if filepath.exists() else ""
+        except Exception as exc:
+            return ToolResult(output=f"Error reading existing file for diff: {exc}", is_error=True)
+        return ToolResult(output=render_unified_diff(filepath, old_content, content))
+
+    def execute(self, params: dict[str, Any]) -> ToolResult:
+        filepath = Path(params["path"]).expanduser()
+        content = params.get("content", "")
+        preview = self.preview(params)
+        if preview.is_error:
+            return preview
+        try:
             filepath.parent.mkdir(parents=True, exist_ok=True)
             filepath.write_text(content)
-            return ToolResult(output=f"Wrote {len(content)} chars to {filepath}")
+            return ToolResult(output=f"Wrote {len(content)} chars to {filepath}\n\nDiff:\n{preview.output}")
         except Exception as exc:
             return ToolResult(output=f"Error writing file: {exc}", is_error=True)

@@ -12,10 +12,10 @@ Original flow (streaming-first, SSE):
 
 Mini flow (synchronous, simplified):
   1. Receive prompt
-  2. Call Claude API (non-streaming)
+  2. Call Claude API (streaming)
   3. Parse response for tool_use blocks (single sequential execution)
   4. Run permission check (2 layers)
-  5. Execute tool, append result
+  5. Preview file diffs, execute tool, append result
   6. Repeat until no tool calls or max_turns reached
 """
 
@@ -26,7 +26,7 @@ from typing import Any
 
 import anthropic
 
-from .config import Config
+from .config import Config, PermissionMode
 from .context import ConversationContext
 from .permissions import PermissionGate
 from .system_prompt import build_system_prompt
@@ -84,14 +84,19 @@ class AgentLoop:
         return final_text
 
     def _call_api(self) -> Any:
-        """Call the Anthropic API with current context."""
-        return self.client.messages.create(
+        """Call the Anthropic API with streaming output enabled."""
+        with self.client.messages.stream(
             model=self.config.model,
             max_tokens=8192,
             system=self.context.system_prompt,
             tools=self.registry.api_schemas(),
             messages=self.context.get_api_messages(),
-        )
+        ) as stream:
+            for event in stream:
+                if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                    sys.stdout.write(event.delta.text)
+                    sys.stdout.flush()
+            return stream.get_final_message()
 
     def _parse_response(self, response: Any) -> tuple[list[dict], list[str]]:
         """Extract tool_use blocks and text blocks from the API response."""
@@ -101,8 +106,6 @@ class AgentLoop:
         for block in response.content:
             if block.type == "text":
                 text_parts.append(block.text)
-                sys.stdout.write(block.text)
-                sys.stdout.flush()
             elif block.type == "tool_use":
                 tool_calls.append({
                     "id": block.id,
@@ -144,6 +147,34 @@ class AgentLoop:
                 })
                 continue
 
+            preview = tool.preview(call["input"])
+            if preview is not None:
+                if preview.is_error:
+                    sys.stdout.write(f"  -> {preview.output}\n")
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": call["id"],
+                        "content": preview.output,
+                        "is_error": True,
+                    })
+                    continue
+
+                sys.stdout.write("\n[Diff Preview]\n")
+                sys.stdout.write(preview.output)
+                if not preview.output.endswith("\n"):
+                    sys.stdout.write("\n")
+                sys.stdout.flush()
+
+                if self.config.permission_mode == PermissionMode.ASK:
+                    if not self._ask_change_confirmation(tool.name):
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": call["id"],
+                            "content": "Permission denied: user rejected diff preview.",
+                            "is_error": True,
+                        })
+                        continue
+
             # Execute the tool
             result = tool.execute(call["input"])
             output_preview = result.output
@@ -165,3 +196,12 @@ class AgentLoop:
             "role": "user",
             "content": tool_results,
         })
+
+    @staticmethod
+    def _ask_change_confirmation(tool_name: str) -> bool:
+        prompt = f"\n[Permission] Apply diff for '{tool_name}'? [y/N] "
+        try:
+            answer = input(prompt).strip().lower()
+            return answer in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            return False

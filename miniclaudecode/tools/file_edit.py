@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Tool, ToolResult
+from .diff_utils import render_unified_diff
 
 
 class FileEditTool(Tool):
@@ -40,7 +41,7 @@ class FileEditTool(Tool):
             "required": ["path", "old_string", "new_string"],
         }
 
-    def execute(self, params: dict[str, Any]) -> ToolResult:
+    def _build_new_content(self, params: dict[str, Any]) -> tuple[Path, str, str] | ToolResult:
         filepath = Path(params["path"]).expanduser()
         old_string = params.get("old_string", "")
         new_string = params.get("new_string", "")
@@ -65,9 +66,24 @@ class FileEditTool(Tool):
             )
 
         new_content = content.replace(old_string, new_string, 1)
+        return filepath, content, new_content
+
+    def preview(self, params: dict[str, Any]) -> ToolResult:
+        built = self._build_new_content(params)
+        if isinstance(built, ToolResult):
+            return built
+        filepath, content, new_content = built
+        return ToolResult(output=render_unified_diff(filepath, content, new_content))
+
+    def execute(self, params: dict[str, Any]) -> ToolResult:
+        built = self._build_new_content(params)
+        if isinstance(built, ToolResult):
+            return built
+        filepath, content, new_content = built
+        diff = render_unified_diff(filepath, content, new_content)
         try:
             filepath.write_text(new_content)
         except Exception as exc:
             return ToolResult(output=f"Error writing file: {exc}", is_error=True)
 
-        return ToolResult(output=f"Replaced 1 occurrence in {filepath}")
+        return ToolResult(output=f"Replaced 1 occurrence in {filepath}\n\nDiff:\n{diff}")

@@ -108,6 +108,23 @@ class TestFileWriteTool(unittest.TestCase):
             self.assertFalse(result.is_error)
             self.assertTrue(path.exists())
 
+    def test_preview_new_file_diff(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.txt"
+            result = self.tool.preview({"path": str(path), "content": "hello\n"})
+        self.assertFalse(result.is_error)
+        self.assertIn("--- a/", result.output)
+        self.assertIn("+++ b/", result.output)
+        self.assertIn("+hello", result.output)
+
+    def test_execute_includes_diff(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.txt"
+            result = self.tool.execute({"path": str(path), "content": "hello\n"})
+        self.assertFalse(result.is_error)
+        self.assertIn("Diff:", result.output)
+        self.assertIn("+hello", result.output)
+
 
 class TestFileEditTool(unittest.TestCase):
     def setUp(self):
@@ -149,6 +166,35 @@ class TestFileEditTool(unittest.TestCase):
                 "new_string": "abc",
             })
         self.assertTrue(result.is_error)
+        Path(f.name).unlink()
+
+    def test_preview_edit_diff(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("hello world\nfoo bar\n")
+            f.flush()
+            result = self.tool.preview({
+                "path": f.name,
+                "old_string": "foo bar",
+                "new_string": "baz qux",
+            })
+        self.assertFalse(result.is_error)
+        self.assertIn("-foo bar", result.output)
+        self.assertIn("+baz qux", result.output)
+        Path(f.name).unlink()
+
+    def test_execute_edit_includes_diff(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("hello world\nfoo bar\n")
+            f.flush()
+            result = self.tool.execute({
+                "path": f.name,
+                "old_string": "foo bar",
+                "new_string": "baz qux",
+            })
+        self.assertFalse(result.is_error)
+        self.assertIn("Diff:", result.output)
+        self.assertIn("-foo bar", result.output)
+        self.assertIn("+baz qux", result.output)
         Path(f.name).unlink()
 
 

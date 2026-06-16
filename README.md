@@ -8,9 +8,10 @@ miniClaudeCode 是一个用于学习 Claude Code 核心架构的最小化 Python
 
 | 能力 | 说明 |
 | --- | --- |
-| Agent Loop | 同步调用 Anthropic Messages API，支持多轮工具调用循环 |
+| Agent Loop | 流式调用 Anthropic Messages API，支持边生成边输出和多轮工具调用循环 |
 | 工具系统 | 内置 bash、read_file、write_file、edit_file、glob、grep 六个核心工具 |
 | 权限控制 | 提供 ask、auto、plan 三种权限模式 |
+| Diff 预览 | write_file 和 edit_file 在落盘前生成 unified diff，ask 模式需要确认后才应用 |
 | 上下文管理 | 使用内存消息列表保存对话，并在超过限制时截断旧消息 |
 | 项目指令 | 启动时会读取当前目录下的 CLAUDE.md 作为项目级指令 |
 | 命令行入口 | 支持交互式 REPL，也支持一次性 prompt 调用 |
@@ -133,7 +134,7 @@ python -m miniclaudecode --model claude-sonnet-4-20250514 --mode ask --max-turns
 | bash | miniclaudecode/tools/bash_tool.py | 执行 shell 命令，最长运行 120 秒，输出最多保留 50000 字符 |
 | read_file | miniclaudecode/tools/file_read.py | 读取文本文件，返回带行号的内容，单文件最大 2 MB |
 | write_file | miniclaudecode/tools/file_write.py | 写入文件，父目录不存在时会自动创建 |
-| edit_file | miniclaudecode/tools/file_edit.py | 使用精确字符串替换编辑文件，old_string 必须唯一 |
+| edit_file | miniclaudecode/tools/file_edit.py | 使用精确字符串替换编辑文件，old_string 必须唯一，并生成 unified diff |
 | glob | miniclaudecode/tools/glob_tool.py | 按 glob 规则搜索文件，最多返回 500 个结果 |
 | grep | miniclaudecode/tools/grep_tool.py | 使用正则搜索文件内容，优先调用 ripgrep，缺失时回退到 Python re |
 
