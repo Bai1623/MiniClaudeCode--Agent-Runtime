@@ -540,13 +540,83 @@ ArtifactStore -> Planner -> Evaluator -> TaskHarness -> CLI
 
 ## 当前状态
 
-当前文档只是第二块的设计和第一阶段执行步骤。
-
-下一次实现应从：
+当前已经完成：
 
 ```text
-miniclaudecode/harness/artifacts.py
-tests/test_harness_artifacts.py
+ArtifactStore
+RunArtifacts
+TaskSpec
+Plan
+Planner
+Evaluator
+Executor
+TaskHarness
+FinalReportGenerator
+CLI 接入
 ```
 
-开始。
+Planner 第一版是确定性实现，不直接调用 LLM。它支持：
+
+```text
+从手写 task 列表构造结构化 Plan
+自动生成 task-001 这类任务 id
+渲染 task markdown
+写入 spec.md
+写入 plan.json
+写入 tasks/task-001.md
+```
+
+Evaluator 第一版是确定性实现，不调用 LLM。它支持：
+
+```text
+运行 unittest 检查
+运行 py_compile 检查
+运行 git diff --stat
+检查 task 是否提到测试意图
+写入 evaluator_reports/task-001.json
+```
+
+Executor 第一版是轻量封装。它支持：
+
+```text
+根据 task contract 构造执行 prompt
+调用 AgentLoop 风格的 runner
+写入 task_started 和 task_executed 事件
+支持 evaluator feedback 注入修复轮次
+```
+
+TaskHarness 第一版已经串起：
+
+```text
+create run
+write request
+planner generate plan
+execute task
+evaluate task
+failed then repair
+run finished event
+```
+
+FinalReportGenerator 第一版支持：
+
+```text
+根据 HarnessRunResult 生成 final_report.md
+记录 run id、status、goal、task 状态、执行次数、检查结果和 artifact 路径
+```
+
+CLI 第一版支持：
+
+```text
+python -m miniclaudecode --list-runs
+python -m miniclaudecode --run-harness "用户需求"
+python -m miniclaudecode --run-harness --harness-task "任务一" --harness-task "任务二" "用户需求"
+```
+
+当前第二块的最小闭环已经完成。后续可以继续增强：
+
+```text
+让 Planner 调用模型生成 plan
+让 Evaluator 增加更细粒度的规则检查
+让 TaskHarness 支持从已有 run 恢复
+让 CLI 支持读取 plan 文件
+```
