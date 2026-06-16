@@ -6,14 +6,23 @@ surrounding components that don't need network access.
 
 from __future__ import annotations
 
+import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from types import SimpleNamespace
 
+if "anthropic" not in sys.modules:
+    sys.modules["anthropic"] = SimpleNamespace(Anthropic=lambda: None)
+
+from miniclaudecode.agent_loop import AgentLoop
 from miniclaudecode.config import Config, PermissionMode
 from miniclaudecode.context import ConversationContext
 from miniclaudecode.permissions import PermissionGate
 from miniclaudecode.system_prompt import build_system_prompt
 from miniclaudecode.tools.base import ToolRegistry, ToolResult
 from miniclaudecode.tools.bash_tool import BashTool
+from miniclaudecode.runtime.tool_runtime import ToolExecution
 
 
 class TestPermissionGate(unittest.TestCase):
@@ -94,6 +103,41 @@ class TestToolResultDataclass(unittest.TestCase):
         self.assertTrue(r.is_error)
         self.assertEqual(r.error_type, "execution_error")
         self.assertEqual(r.metadata["tool"], "bash")
+
+
+class TestAgentLoopRuntimeIntegration(unittest.TestCase):
+    def test_execute_tool_calls_delegates_to_runtime(self):
+        agent = SimpleNamespace()
+        agent.context = ConversationContext(config=Config())
+
+        calls = []
+
+        class FakeRuntime:
+            def invoke(self, call, turn, run_id):
+                calls.append((call, turn, run_id))
+                return ToolExecution(
+                    tool_use_id=call["id"],
+                    result=ToolResult(output="runtime ok"),
+                )
+
+        agent.tool_runtime = FakeRuntime()
+        with redirect_stdout(StringIO()):
+            AgentLoop._execute_tool_calls(
+                agent,
+                [{"id": "toolu_1", "name": "fake", "input": {"x": 1}}],
+                turn=3,
+                run_id="run_1",
+            )
+
+        self.assertEqual(calls[0][1], 3)
+        self.assertEqual(calls[0][2], "run_1")
+        self.assertEqual(agent.context.messages[0]["role"], "user")
+        self.assertEqual(agent.context.messages[0]["content"][0], {
+            "type": "tool_result",
+            "tool_use_id": "toolu_1",
+            "content": "runtime ok",
+            "is_error": False,
+        })
 
 
 if __name__ == "__main__":

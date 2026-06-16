@@ -14,8 +14,8 @@ Mini flow (synchronous, simplified):
   1. Receive prompt
   2. Call Claude API (streaming)
   3. Parse response for tool_use blocks (single sequential execution)
-  4. Run permission check (2 layers)
-  5. Preview file diffs, execute tool, append result
+  4. Invoke ToolRuntime for validation, permissions, preview, execution, and tracing
+  5. Append tool results
   6. Repeat until no tool calls or max_turns reached
 """
 
@@ -26,9 +26,11 @@ from typing import Any
 
 import anthropic
 
-from .config import Config, PermissionMode
+from .config import Config
 from .context import ConversationContext
 from .permissions import PermissionGate
+from .runtime.tool_runtime import ToolRuntime
+from .runtime.tracing import TraceRecorder
 from .system_prompt import build_system_prompt
 from .tools.base import ToolRegistry
 
@@ -50,6 +52,14 @@ class AgentLoop:
         self.permission_gate = PermissionGate(self.config)
         self.context = ConversationContext(config=self.config)
         self.client = anthropic.Anthropic()
+        self.tracer = TraceRecorder()
+        self.tool_runtime = ToolRuntime(
+            registry=self.registry,
+            permission_gate=self.permission_gate,
+            config=self.config,
+            tracer=self.tracer,
+            output=sys.stdout,
+        )
 
         system_prompt = build_system_prompt(
             self.registry,
@@ -60,9 +70,10 @@ class AgentLoop:
     def run(self, user_message: str) -> str:
         """Process a user message through the agent loop, returning the final text response."""
         self.context.add_user_message(user_message)
+        run_id = self.tracer.start_run()
         final_text = ""
 
-        for turn in range(self.config.max_turns):
+        for turn in range(1, self.config.max_turns + 1):
             response = self._call_api()
             tool_calls, text_parts = self._parse_response(response)
 
@@ -76,7 +87,7 @@ class AgentLoop:
 
             # There are tool calls -- execute them and continue the loop
             self.context.add_assistant_message(response.content)
-            self._execute_tool_calls(tool_calls)
+            self._execute_tool_calls(tool_calls, turn=turn, run_id=run_id)
         else:
             if not final_text:
                 final_text = "(max turns reached without a final response)"
@@ -121,87 +132,22 @@ class AgentLoop:
 
         return tool_calls, text_parts
 
-    def _execute_tool_calls(self, tool_calls: list[dict]) -> None:
-        """Execute each tool call through the permission gate, append results."""
+    def _execute_tool_calls(self, tool_calls: list[dict], turn: int, run_id: str) -> None:
+        """Execute each tool call through ToolRuntime, append results."""
         tool_results = []
         for call in tool_calls:
-            tool = self.registry.get(call["name"])
-            if tool is None:
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": call["id"],
-                    "content": f"Error: unknown tool '{call['name']}'",
-                    "is_error": True,
-                })
-                continue
-
-            # Permission check (2-layer gate)
-            denial = self.permission_gate.check(tool, call["input"])
-            if denial is not None:
-                sys.stdout.write(f"  -> {denial.output}\n")
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": call["id"],
-                    "content": denial.output,
-                    "is_error": True,
-                })
-                continue
-
-            preview = tool.preview(call["input"])
-            if preview is not None:
-                if preview.is_error:
-                    sys.stdout.write(f"  -> {preview.output}\n")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": call["id"],
-                        "content": preview.output,
-                        "is_error": True,
-                    })
-                    continue
-
-                sys.stdout.write("\n[Diff Preview]\n")
-                sys.stdout.write(preview.output)
-                if not preview.output.endswith("\n"):
-                    sys.stdout.write("\n")
-                sys.stdout.flush()
-
-                if self.config.permission_mode == PermissionMode.ASK:
-                    if not self._ask_change_confirmation(tool.name):
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": call["id"],
-                            "content": "Permission denied: user rejected diff preview.",
-                            "is_error": True,
-                        })
-                        continue
-
-            # Execute the tool
-            result = tool.execute(call["input"])
+            execution = self.tool_runtime.invoke(call, turn=turn, run_id=run_id)
+            result = execution.result
             output_preview = result.output
             if len(output_preview) > 300:
                 output_preview = output_preview[:300] + "..."
             status = "ERROR" if result.is_error else "OK"
             sys.stdout.write(f"  -> [{status}] {output_preview}\n")
             sys.stdout.flush()
-
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": call["id"],
-                "content": result.output,
-                "is_error": result.is_error,
-            })
+            tool_results.append(execution.to_api_result())
 
         # Append all tool results as a single user message (Anthropic API format)
         self.context.messages.append({
             "role": "user",
             "content": tool_results,
         })
-
-    @staticmethod
-    def _ask_change_confirmation(tool_name: str) -> bool:
-        prompt = f"\n[Permission] Apply diff for '{tool_name}'? [y/N] "
-        try:
-            answer = input(prompt).strip().lower()
-            return answer in ("y", "yes")
-        except (EOFError, KeyboardInterrupt):
-            return False

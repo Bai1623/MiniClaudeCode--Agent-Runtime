@@ -28,6 +28,12 @@ miniClaudeCode-dev/
     context.py
     permissions.py
     system_prompt.py
+    runtime/
+      tool_runtime.py
+      tool_loader.py
+      schema_validator.py
+      compression.py
+      tracing.py
     tools/
       base.py
       bash_tool.py
@@ -168,6 +174,7 @@ Claude 返回文本或 tool_use
 | --- | --- |
 | miniclaudecode/cli.py | 命令行参数解析、交互式 REPL、内置命令 |
 | miniclaudecode/agent_loop.py | 主 agent loop，负责调用 API、解析工具调用、执行工具并继续循环 |
+| miniclaudecode/runtime/tool_runtime.py | Tool Runtime，统一处理工具查找、schema 校验、权限、diff preview、超时、重试、压缩和 tracing |
 | miniclaudecode/tools/base.py | Tool 抽象基类、ToolResult、ToolRegistry |
 | miniclaudecode/permissions.py | 两层权限检查 |
 | miniclaudecode/context.py | 对话消息管理、上下文截断、CLAUDE.md 读取 |
