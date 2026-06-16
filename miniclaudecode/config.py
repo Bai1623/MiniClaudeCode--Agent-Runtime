@@ -16,6 +16,9 @@ class Config:
     max_turns: int = 30
     max_context_messages: int = 100
     max_output_chars: int = 50_000
+    max_tool_result_chars: int = 12_000
+    tool_result_head_chars: int = 8_000
+    tool_result_tail_chars: int = 4_000
     permission_mode: PermissionMode = PermissionMode.ASK
     allowed_commands: list[str] = field(default_factory=lambda: [
         "ls", "cat", "head", "tail", "wc", "find", "grep", "rg",
