@@ -1,5 +1,28 @@
-# miniClaudeCode
+﻿# miniClaudeCode
 
+## Current Highlights
+
+miniClaudeCode now contains two completed engineering blocks:
+
+1. Tool Runtime
+   Centralized tool execution with tool discovery, JSON Schema validation, permission checks, diff preview, timeout, retry, result compression, and JSONL tracing.
+
+2. Planner Executor Evaluator Long Task Harness
+   A long-running task harness with ArtifactStore, Planner, Evaluator, Executor, TaskHarness, FinalReportGenerator, and CLI entry points. It supports task planning, staged execution, deterministic evaluation, repair feedback loops, run artifacts, and final reports.
+
+Useful harness commands:
+
+```bash
+python -m miniclaudecode --list-runs
+python -m miniclaudecode --run-harness "your request"
+python -m miniclaudecode --run-harness --harness-task "task one" --harness-task "task two" "your request"
+```
+
+Interview positioning:
+
+```text
+This project implements a lightweight AI Coding Agent Runtime. The first block focuses on safe and observable tool execution. The second block adds a Planner Executor Evaluator harness so larger coding tasks can be planned, executed in stages, evaluated with deterministic checks, repaired from feedback, and recorded as auditable run artifacts.
+```
 miniClaudeCode 是一个用于学习 Claude Code 核心架构的最小化 Python 实现。它保留了终端 AI 编程助手最关键的运行链路：用户输入、调用 Claude API、解析 tool_use、执行工具、把工具结果放回上下文，然后继续循环直到得到最终回答。
 
 这个项目不是 Claude Code 的完整替代品，而是一个便于阅读、实验和教学的精简版 agent runtime。
@@ -251,3 +274,4 @@ python -m unittest discover
 3. edit_file 只做精确字符串替换，不支持模糊匹配或自动 diff。
 4. read_file 默认按文本读取，不处理图片或其他二进制文件。
 5. 当前项目没有打包配置，推荐通过 python -m miniclaudecode 从源码目录运行。
+
