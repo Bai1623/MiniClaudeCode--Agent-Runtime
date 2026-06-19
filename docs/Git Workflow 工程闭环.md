@@ -544,9 +544,29 @@ tests/test_git_workflow_diff_summary.py
 支持 cached diff
 ```
 
-下一步建议继续做：
+第三步 TestRunner 已完成。
+
+已经新增：
 
 ```text
 miniclaudecode/git_workflow/test_runner.py
 tests/test_git_workflow_test_runner.py
+```
+
+能力包括：
+
+```text
+运行默认测试命令 python -m unittest discover
+支持自定义测试命令
+记录 returncode、stdout、stderr 和 duration_ms
+识别 timeout
+截断超长测试输出
+生成 Markdown 测试结果摘要
+```
+
+下一步建议继续做：
+
+```text
+miniclaudecode/git_workflow/commit_message.py
+tests/test_git_workflow_commit_message.py
 ```
