@@ -503,15 +503,50 @@ python -m miniclaudecode --git-commit-message
 实现 Git Workflow 工程闭环，支持工作区状态检测、变更摘要、测试执行、commit message 生成和报告集成，使 AI Coding Agent 的代码修改能够进入可审查、可验证的版本控制流程。
 ```
 
-## 当前状态
+## 当前进度
 
-第三块当前处于规划阶段。
+第一步 WorktreeInspector 已完成。
 
-下一步从：
+已经新增：
 
 ```text
 miniclaudecode/git_workflow/worktree.py
 tests/test_git_workflow_worktree.py
 ```
 
-开始。
+能力包括：
+
+```text
+读取 git status porcelain
+识别 changed、untracked、staged 文件
+读取 diff stat
+读取 changed files
+非 git repo 给出明确错误
+```
+
+第二步 DiffSummary 已完成。
+
+已经新增：
+
+```text
+miniclaudecode/git_workflow/diff_summary.py
+tests/test_git_workflow_diff_summary.py
+```
+
+能力包括：
+
+```text
+解析 git diff --numstat
+输出 FileChange 和 DiffSummary
+统计 additions 和 deletions
+识别 binary 文件
+生成 Markdown diff 摘要
+支持 cached diff
+```
+
+下一步建议继续做：
+
+```text
+miniclaudecode/git_workflow/test_runner.py
+tests/test_git_workflow_test_runner.py
+```
