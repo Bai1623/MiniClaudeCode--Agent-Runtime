@@ -1,5 +1,6 @@
 """Git workflow helpers for engineering handoff."""
 
+from miniclaudecode.git_workflow.commit_message import CommitMessageGenerator
 from miniclaudecode.git_workflow.diff_summary import (
     DiffSummary,
     DiffSummaryCollector,
@@ -19,6 +20,7 @@ from miniclaudecode.git_workflow.worktree import (
 )
 
 __all__ = [
+    "CommitMessageGenerator",
     "DiffSummary",
     "DiffSummaryCollector",
     "FileChange",

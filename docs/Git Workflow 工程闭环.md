@@ -564,9 +564,29 @@ tests/test_git_workflow_test_runner.py
 生成 Markdown 测试结果摘要
 ```
 
-下一步建议继续做：
+第四步 CommitMessageGenerator 已完成。
+
+已经新增：
 
 ```text
 miniclaudecode/git_workflow/commit_message.py
 tests/test_git_workflow_commit_message.py
+```
+
+能力包括：
+
+```text
+基于 DiffSummary 生成稳定 commit message
+根据 source、tests、docs 文件类型推导 subject
+记录 diff 文件数、additions 和 deletions
+记录测试命令 passed、failed 或 timed out
+支持用户传入 summary 覆盖 subject
+无 tracked changes 时给出 fallback message
+```
+
+下一步建议继续做：
+
+```text
+miniclaudecode/git_workflow/workflow.py
+tests/test_git_workflow_workflow.py
 ```
