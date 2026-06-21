@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import locale
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,35 +41,35 @@ class WorktreeInspector:
         self.runner = runner or self._default_runner
 
     def ensure_git_repo(self) -> None:
-        result = self.runner(["git", "rev-parse", "--is-inside-work-tree"], self.repo_dir)
+        result = self.runner(["git", "-c", "core.quotepath=false", "rev-parse", "--is-inside-work-tree"], self.repo_dir)
         if result.returncode != 0 or result.stdout.strip() != "true":
             message = result.stderr.strip() or "Not inside a git worktree."
             raise GitWorkflowError(message)
 
     def get_status(self) -> WorktreeStatus:
         self.ensure_git_repo()
-        result = self.runner(["git", "status", "--porcelain=v1", "-b"], self.repo_dir)
+        result = self.runner(["git", "-c", "core.quotepath=false", "status", "--porcelain=v1", "-b"], self.repo_dir)
         if result.returncode != 0:
             raise GitWorkflowError(result.stderr.strip() or "git status failed")
         return self._parse_status(result.stdout)
 
     def get_diff_stat(self) -> str:
         self.ensure_git_repo()
-        result = self.runner(["git", "diff", "--stat"], self.repo_dir)
+        result = self.runner(["git", "-c", "core.quotepath=false", "diff", "--stat"], self.repo_dir)
         if result.returncode != 0:
             raise GitWorkflowError(result.stderr.strip() or "git diff --stat failed")
         return result.stdout
 
     def get_changed_files(self) -> list[str]:
         self.ensure_git_repo()
-        result = self.runner(["git", "diff", "--name-only"], self.repo_dir)
+        result = self.runner(["git", "-c", "core.quotepath=false", "diff", "--name-only"], self.repo_dir)
         if result.returncode != 0:
             raise GitWorkflowError(result.stderr.strip() or "git diff --name-only failed")
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     def get_staged_files(self) -> list[str]:
         self.ensure_git_repo()
-        result = self.runner(["git", "diff", "--cached", "--name-only"], self.repo_dir)
+        result = self.runner(["git", "-c", "core.quotepath=false", "diff", "--cached", "--name-only"], self.repo_dir)
         if result.returncode != 0:
             raise GitWorkflowError(result.stderr.strip() or "git diff --cached --name-only failed")
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -127,12 +128,20 @@ class WorktreeInspector:
             command,
             cwd=cwd,
             capture_output=True,
-            text=True,
             timeout=30,
         )
         return GitCommandResult(
             command=command,
             returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=_decode_git_output(completed.stdout),
+            stderr=_decode_git_output(completed.stderr),
         )
+
+
+def _decode_git_output(output: bytes) -> str:
+    for encoding in ("utf-8", locale.getpreferredencoding(False), "gbk"):
+        try:
+            return output.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return output.decode("utf-8", errors="replace")

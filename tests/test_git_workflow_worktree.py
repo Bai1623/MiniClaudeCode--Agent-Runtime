@@ -11,6 +11,8 @@ from miniclaudecode.git_workflow.worktree import (
     WorktreeInspector,
 )
 
+GIT = ("git", "-c", "core.quotepath=false")
+
 
 class FakeGitRunner:
     def __init__(self, results: dict[tuple[str, ...], GitCommandResult]) -> None:
@@ -29,24 +31,24 @@ def ok(command: list[str], stdout: str = "") -> GitCommandResult:
 class TestWorktreeInspector(unittest.TestCase):
     def make_runner(self, status_output: str = "") -> FakeGitRunner:
         return FakeGitRunner({
-            ("git", "rev-parse", "--is-inside-work-tree"): ok(
-                ["git", "rev-parse", "--is-inside-work-tree"],
+            (*GIT, "rev-parse", "--is-inside-work-tree"): ok(
+                [*GIT, "rev-parse", "--is-inside-work-tree"],
                 "true\n",
             ),
-            ("git", "status", "--porcelain=v1", "-b"): ok(
-                ["git", "status", "--porcelain=v1", "-b"],
+            (*GIT, "status", "--porcelain=v1", "-b"): ok(
+                [*GIT, "status", "--porcelain=v1", "-b"],
                 status_output,
             ),
-            ("git", "diff", "--stat"): ok(
-                ["git", "diff", "--stat"],
+            (*GIT, "diff", "--stat"): ok(
+                [*GIT, "diff", "--stat"],
                 " file.py | 2 +-\n",
             ),
-            ("git", "diff", "--name-only"): ok(
-                ["git", "diff", "--name-only"],
+            (*GIT, "diff", "--name-only"): ok(
+                [*GIT, "diff", "--name-only"],
                 "file.py\nREADME.md\n",
             ),
-            ("git", "diff", "--cached", "--name-only"): ok(
-                ["git", "diff", "--cached", "--name-only"],
+            (*GIT, "diff", "--cached", "--name-only"): ok(
+                [*GIT, "diff", "--cached", "--name-only"],
                 "staged.py\n",
             ),
         })
@@ -108,8 +110,8 @@ class TestWorktreeInspector(unittest.TestCase):
 
     def test_non_git_repo_raises_clear_error(self):
         runner = FakeGitRunner({
-            ("git", "rev-parse", "--is-inside-work-tree"): GitCommandResult(
-                command=["git", "rev-parse", "--is-inside-work-tree"],
+            (*GIT, "rev-parse", "--is-inside-work-tree"): GitCommandResult(
+                command=[*GIT, "rev-parse", "--is-inside-work-tree"],
                 returncode=128,
                 stderr="fatal: not a git repository",
             )

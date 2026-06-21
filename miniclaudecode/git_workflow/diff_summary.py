@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from miniclaudecode.git_workflow.worktree import GitCommandResult, GitRunner, GitWorkflowError
+from miniclaudecode.git_workflow.worktree import (
+    GitCommandResult,
+    GitRunner,
+    GitWorkflowError,
+    _decode_git_output,
+)
 
 
 @dataclass(frozen=True)
@@ -55,9 +60,10 @@ class DiffSummaryCollector:
         self.runner = runner or self._default_runner
 
     def get_summary(self, cached: bool = False) -> DiffSummary:
-        command = ["git", "diff", "--numstat"]
+        command = ["git", "-c", "core.quotepath=false", "diff"]
         if cached:
-            command.insert(2, "--cached")
+            command.append("--cached")
+        command.append("--numstat")
 
         result = self.runner(command, self.repo_dir)
         if result.returncode != 0:
@@ -73,14 +79,13 @@ class DiffSummaryCollector:
             command,
             cwd=cwd,
             capture_output=True,
-            text=True,
             timeout=30,
         )
         return GitCommandResult(
             command=command,
             returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=_decode_git_output(completed.stdout),
+            stderr=_decode_git_output(completed.stderr),
         )
 
 

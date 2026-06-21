@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .artifacts import ArtifactStore
 from .task_harness import HarnessRunResult
+
+if TYPE_CHECKING:
+    from miniclaudecode.git_workflow.workflow import GitWorkflowReport
 
 
 class FinalReportGenerator:
     """Renders a Markdown report from a completed harness run."""
 
-    def render(self, result: HarnessRunResult) -> str:
+    def render(self, result: HarnessRunResult, git_report: "GitWorkflowReport | None" = None) -> str:
         lines = [
             "# Harness Run Report",
             "",
@@ -59,9 +64,22 @@ class FinalReportGenerator:
             f"Traces: {result.artifacts.traces_dir}",
             "",
         ])
+
+        if git_report is not None:
+            lines.extend([
+                "## Git Workflow",
+                "",
+                git_report.to_markdown(),
+                "",
+            ])
         return "\n".join(lines).rstrip() + "\n"
 
-    def write(self, store: ArtifactStore, result: HarnessRunResult) -> str:
-        report = self.render(result)
+    def write(
+        self,
+        store: ArtifactStore,
+        result: HarnessRunResult,
+        git_report: "GitWorkflowReport | None" = None,
+    ) -> str:
+        report = self.render(result, git_report=git_report)
         store.write_final_report(result.artifacts, report)
         return report

@@ -11,6 +11,8 @@ from miniclaudecode.git_workflow.diff_summary import (
 )
 from miniclaudecode.git_workflow.worktree import GitCommandResult, GitWorkflowError
 
+GIT = ["git", "-c", "core.quotepath=false"]
+
 
 class FakeGitRunner:
     def __init__(self, results: dict[tuple[str, ...], GitCommandResult]) -> None:
@@ -79,7 +81,7 @@ class TestDiffSummary(unittest.TestCase):
         )
 
     def test_collector_runs_numstat(self):
-        command = ["git", "diff", "--numstat"]
+        command = [*GIT, "diff", "--numstat"]
         runner = FakeGitRunner({
             tuple(command): result(command, "1\t0\tfile.py\n"),
         })
@@ -91,7 +93,7 @@ class TestDiffSummary(unittest.TestCase):
         self.assertEqual(runner.calls[0][0], command)
 
     def test_collector_runs_cached_numstat(self):
-        command = ["git", "diff", "--cached", "--numstat"]
+        command = [*GIT, "diff", "--cached", "--numstat"]
         runner = FakeGitRunner({
             tuple(command): result(command, "0\t2\tfile.py\n"),
         })
@@ -103,7 +105,7 @@ class TestDiffSummary(unittest.TestCase):
         self.assertEqual(runner.calls[0][0], command)
 
     def test_collector_command_failure_raises_clear_error(self):
-        command = ["git", "diff", "--numstat"]
+        command = [*GIT, "diff", "--numstat"]
         runner = FakeGitRunner({
             tuple(command): result(command, returncode=128, stderr="fatal: not a git repository"),
         })

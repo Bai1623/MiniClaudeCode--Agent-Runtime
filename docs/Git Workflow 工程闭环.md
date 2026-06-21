@@ -605,9 +605,48 @@ tests/test_git_workflow_workflow.py
 默认只分析，不自动 commit
 ```
 
-下一步建议继续做：
+第六步 Harness Report 集成已完成。
+
+已经更新：
 
 ```text
 miniclaudecode/harness/report.py
 tests/test_harness_report.py
+```
+
+能力包括：
+
+```text
+FinalReportGenerator 支持可选 GitWorkflowReport
+final_report.md 可以包含 Git Workflow 摘要
+保留原有 render 和 write 调用方式
+Harness 运行结束后会写入 Git Workflow 分析结果
+```
+
+第七步 CLI 接入已完成。
+
+已经更新：
+
+```text
+miniclaudecode/cli.py
+tests/test_cli.py
+```
+
+新增命令：
+
+```text
+python -m miniclaudecode --git-summary
+python -m miniclaudecode --git-commit-message
+python -m miniclaudecode --git-summary --skip-git-tests
+python -m miniclaudecode --git-commit-message --skip-git-tests
+```
+
+能力包括：
+
+```text
+输出 Git Workflow Markdown 报告
+输出建议 commit message
+可跳过测试以快速查看 Git 摘要
+不会自动 commit
+不会自动 push
 ```

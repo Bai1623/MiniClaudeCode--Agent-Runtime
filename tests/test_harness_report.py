@@ -11,6 +11,10 @@ from miniclaudecode.harness.executor import ExecutionResult
 from miniclaudecode.harness.planner import Planner, TaskSpec
 from miniclaudecode.harness.report import FinalReportGenerator
 from miniclaudecode.harness.task_harness import HarnessRunResult, TaskRunResult
+from miniclaudecode.git_workflow.diff_summary import DiffSummary, FileChange
+from miniclaudecode.git_workflow.test_runner import TestRunResult
+from miniclaudecode.git_workflow.workflow import GitWorkflowReport
+from miniclaudecode.git_workflow.worktree import WorktreeStatus
 
 
 class TestFinalReportGenerator(unittest.TestCase):
@@ -71,6 +75,40 @@ class TestFinalReportGenerator(unittest.TestCase):
             saved = result.artifacts.final_report_path.read_text(encoding="utf-8")
 
         self.assertEqual(saved, report)
+
+    def test_render_report_with_git_workflow_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            result = self.make_result(store)
+            git_report = GitWorkflowReport(
+                status=WorktreeStatus(
+                    branch="master",
+                    changed_files=["miniclaudecode/cli.py"],
+                    untracked_files=[],
+                    staged_files=[],
+                    is_dirty=True,
+                ),
+                diff_summary=DiffSummary(
+                    files=[FileChange("miniclaudecode/cli.py", "modified", 3, 1)],
+                    total_additions=3,
+                    total_deletions=1,
+                ),
+                test_result=TestRunResult(
+                    command=["python", "-m", "unittest", "discover"],
+                    returncode=0,
+                    duration_ms=10,
+                    stdout="OK",
+                    stderr="",
+                ),
+                commit_message="Update implementation",
+            )
+
+            report = FinalReportGenerator().render(result, git_report=git_report)
+
+        self.assertIn("## Git Workflow", report)
+        self.assertIn("## Git Workflow Report", report)
+        self.assertIn("Branch: master", report)
+        self.assertIn("Update implementation", report)
 
 
 if __name__ == "__main__":

@@ -62,6 +62,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the prompt through the Planner Executor Evaluator harness.",
     )
     parser.add_argument(
+        "--git-summary",
+        action="store_true",
+        help="Analyze the current git workflow state and print a Markdown report.",
+    )
+    parser.add_argument(
+        "--git-commit-message",
+        action="store_true",
+        help="Analyze the current git workflow state and print a suggested commit message.",
+    )
+    parser.add_argument(
+        "--skip-git-tests",
+        action="store_true",
+        help="Skip tests when generating git workflow summaries.",
+    )
+    parser.add_argument(
         "--harness-task",
         action="append",
         default=None,
@@ -196,13 +211,42 @@ def run_harness(args: argparse.Namespace) -> int:
         spec=args.harness_spec,
         tasks=default_harness_tasks(args.prompt, args.harness_task),
     )
-    FinalReportGenerator().write(store, result)
+    git_report = build_git_workflow_report(args)
+    FinalReportGenerator().write(store, result, git_report=git_report)
 
     print(f"Harness run: {result.artifacts.run_id}")
     print(f"Status: {result.status}")
     print(f"Artifacts: {result.artifacts.root}")
     print(f"Final report: {result.artifacts.final_report_path}")
     return 0 if result.status == "passed" else 1
+
+
+def build_git_workflow_report(args: argparse.Namespace):
+    from .git_workflow import GitWorkflow
+
+    return GitWorkflow().analyze(run_tests=not args.skip_git_tests)
+
+
+def run_git_summary(args: argparse.Namespace, output=sys.stdout) -> int:
+    try:
+        report = build_git_workflow_report(args)
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(report.to_markdown(), file=output)
+    return 0
+
+
+def run_git_commit_message(args: argparse.Namespace, output=sys.stdout) -> int:
+    try:
+        report = build_git_workflow_report(args)
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(report.commit_message, file=output)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -215,6 +259,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.run_harness:
         return run_harness(args)
+
+    if args.git_summary:
+        return run_git_summary(args)
+
+    if args.git_commit_message:
+        return run_git_commit_message(args)
 
     agent = build_agent(args)
 
