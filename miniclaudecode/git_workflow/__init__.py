@@ -12,6 +12,11 @@ from miniclaudecode.git_workflow.test_runner import (
     TestRunner,
     TestRunResult,
 )
+from miniclaudecode.git_workflow.workflow import (
+    GitWorkflow,
+    GitWorkflowReport,
+    merge_diff_summaries,
+)
 from miniclaudecode.git_workflow.worktree import (
     GitCommandResult,
     GitWorkflowError,
@@ -27,9 +32,12 @@ __all__ = [
     "DEFAULT_TEST_COMMAND",
     "GitCommandResult",
     "GitWorkflowError",
+    "GitWorkflow",
+    "GitWorkflowReport",
     "TestRunner",
     "TestRunResult",
     "WorktreeInspector",
     "WorktreeStatus",
+    "merge_diff_summaries",
     "parse_numstat",
 ]

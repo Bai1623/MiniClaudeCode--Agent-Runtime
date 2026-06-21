@@ -584,9 +584,30 @@ tests/test_git_workflow_commit_message.py
 无 tracked changes 时给出 fallback message
 ```
 
-下一步建议继续做：
+第五步 GitWorkflow 总编排已完成。
+
+已经新增：
 
 ```text
 miniclaudecode/git_workflow/workflow.py
 tests/test_git_workflow_workflow.py
+```
+
+能力包括：
+
+```text
+串起 WorktreeInspector、DiffSummaryCollector、TestRunner 和 CommitMessageGenerator
+同时汇总 unstaged diff 和 staged diff
+支持 run_tests=false 跳过测试
+支持自定义 test command 和 timeout
+输出 GitWorkflowReport
+生成 Markdown 工程闭环报告
+默认只分析，不自动 commit
+```
+
+下一步建议继续做：
+
+```text
+miniclaudecode/harness/report.py
+tests/test_harness_report.py
 ```
