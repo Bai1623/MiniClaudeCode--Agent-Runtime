@@ -7,11 +7,13 @@ from miniclaudecode.memory.records import (
     ProjectSummary,
     TaskMemory,
 )
+from miniclaudecode.memory.store import MemoryStore
 
 __all__ = [
     "ContextBundle",
     "DecisionRecord",
     "FileSummary",
+    "MemoryStore",
     "ProjectSummary",
     "TaskMemory",
 ]
