@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -62,14 +63,14 @@ class TestEvaluationModels(unittest.TestCase):
 class TestEvaluator(unittest.TestCase):
     def make_runner(self, unittest_code: int = 0, compile_code: int = 0, diff_code: int = 0) -> FakeRunner:
         return FakeRunner({
-            ("python", "-m", "unittest", "discover"): CommandResult(
-                command=["python", "-m", "unittest", "discover"],
+            (sys.executable, "-m", "unittest", "discover"): CommandResult(
+                command=[sys.executable, "-m", "unittest", "discover"],
                 returncode=unittest_code,
                 stdout="tests ok" if unittest_code == 0 else "",
                 stderr="" if unittest_code == 0 else "tests failed",
             ),
-            ("python", "-m", "compileall", "-q", "miniclaudecode", "tests"): CommandResult(
-                command=["python", "-m", "compileall", "-q", "miniclaudecode", "tests"],
+            (sys.executable, "-m", "compileall", "-q", "miniclaudecode", "tests"): CommandResult(
+                command=[sys.executable, "-m", "compileall", "-q", "miniclaudecode", "tests"],
                 returncode=compile_code,
                 stdout="",
                 stderr="" if compile_code == 0 else "compile failed",

@@ -80,7 +80,7 @@ miniClaudeCode-dev/
 建议使用 Python 3.11 或更新版本。
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 ```
 
 Windows PowerShell:
@@ -94,7 +94,7 @@ macOS 或 Linux:
 
 ```bash
 source .venv/bin/activate
-pip install -r requirements.txt
+.venv/bin/python -m pip install -e ".[dev]"
 ```
 
 运行前需要配置 Anthropic API Key。
@@ -220,11 +220,22 @@ Claude 返回文本或 tool_use
 
 ## 测试
 
-项目使用 unittest，不需要额外测试依赖。
+项目使用 unittest。建议通过可编辑安装统一开发环境，确保运行时依赖和开发工具都可用。
 
 ```bash
-python -m unittest discover
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m unittest discover
 ```
+
+## 开发流程
+
+本项目的代码变更统一遵守以下流程：
+
+1. 从 master 新建功能分支，分支名使用 feature/功能名字。
+2. 在功能分支完成修改，并运行 .venv/bin/python -m unittest discover。
+3. 测试通过后提交代码，合并回 master。
+4. 将 master 推送到远程仓库。
 
 测试覆盖范围包括：
 
@@ -273,5 +284,4 @@ python -m unittest discover
 2. auto 模式会自动执行通过工具自检的操作，使用前应确认当前工作目录没有重要未备份文件。
 3. edit_file 只做精确字符串替换，不支持模糊匹配或自动 diff。
 4. read_file 默认按文本读取，不处理图片或其他二进制文件。
-5. 当前项目没有打包配置，推荐通过 python -m miniclaudecode 从源码目录运行。
-
+5. 当前项目提供 pyproject.toml，可通过可编辑安装获得 miniclaudecode 命令。

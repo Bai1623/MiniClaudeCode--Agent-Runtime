@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Any
@@ -77,11 +78,11 @@ class Evaluator:
         return report
 
     def run_unittest_check(self) -> EvaluationCheck:
-        result = self.runner(["python", "-m", "unittest", "discover"], self.project_dir)
+        result = self.runner([sys.executable, "-m", "unittest", "discover"], self.project_dir)
         return self._command_check("unit_tests", result)
 
     def run_py_compile_check(self) -> EvaluationCheck:
-        result = self.runner(["python", "-m", "compileall", "-q", "miniclaudecode", "tests"], self.project_dir)
+        result = self.runner([sys.executable, "-m", "compileall", "-q", "miniclaudecode", "tests"], self.project_dir)
         return self._command_check("py_compile", result)
 
     def run_git_diff_check(self) -> EvaluationCheck:

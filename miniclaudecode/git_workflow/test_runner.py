@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 
-DEFAULT_TEST_COMMAND = ["python", "-m", "unittest", "discover"]
+DEFAULT_TEST_COMMAND = [sys.executable, "-m", "unittest", "discover"]
 DEFAULT_OUTPUT_LIMIT = 12_000
 
 
