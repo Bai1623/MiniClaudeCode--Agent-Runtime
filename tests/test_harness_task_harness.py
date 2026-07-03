@@ -16,6 +16,10 @@ from miniclaudecode.harness.task_harness import HarnessRunResult, TaskHarness, T
 class FakeExecutor:
     def __init__(self) -> None:
         self.feedbacks: list[str] = []
+        self.trace_dirs: list[str] = []
+
+    def set_trace_dir(self, trace_dir):
+        self.trace_dirs.append(trace_dir)
 
     def execute_task(self, store, artifacts, task, feedback=""):
         self.feedbacks.append(feedback)
@@ -108,6 +112,7 @@ class TestTaskHarness(unittest.TestCase):
         self.assertTrue(plan_exists)
         self.assertEqual(events[0]["type"], "run_created")
         self.assertEqual(events[-1], {"type": "run_finished", "status": "passed"})
+        self.assertEqual(executor.trace_dirs, [str(result.artifacts.traces_dir)])
 
     def test_run_repairs_failed_task_once(self):
         with tempfile.TemporaryDirectory() as tmpdir:

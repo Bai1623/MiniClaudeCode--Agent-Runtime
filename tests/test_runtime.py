@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import time
 import tempfile
+import time
 import unittest
-from io import StringIO
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +15,8 @@ from miniclaudecode.config import Config, PermissionMode
 from miniclaudecode.permissions import PermissionGate
 from miniclaudecode.runtime.compression import compress_tool_result
 from miniclaudecode.runtime.schema_validator import validate_tool_input
-from miniclaudecode.runtime.tracing import TraceRecorder, build_input_preview
 from miniclaudecode.runtime.tool_runtime import ToolExecution, ToolRuntime
+from miniclaudecode.runtime.tracing import TraceRecorder, build_input_preview
 from miniclaudecode.tools.base import Tool, ToolRegistry, ToolResult
 from miniclaudecode.tools.file_read import FileReadTool
 from miniclaudecode.tools.file_write import FileWriteTool
@@ -161,6 +161,30 @@ class TestTracing(unittest.TestCase):
         self.assertEqual(event["input_preview"]["pattern"], "AgentLoop")
         self.assertEqual(event["output_chars"], 5)
         self.assertFalse(event["compressed"])
+
+    def test_set_trace_dir_routes_next_run(self):
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            recorder = TraceRecorder(trace_dir=first)
+            recorder.set_trace_dir(second)
+            run_id = recorder.start_run()
+            timestamp = datetime(2026, 6, 16, 6, 30, 0, tzinfo=timezone.utc)
+            recorder.record_tool_call(
+                run_id=run_id,
+                turn=1,
+                tool_call_id="toolu_test",
+                tool_name="grep",
+                params={},
+                result=ToolResult(output="ok"),
+                started_at=timestamp,
+                ended_at=timestamp,
+            )
+
+            first_files = list(Path(first).glob("*.jsonl"))
+            second_files = list(Path(second).glob("*.jsonl"))
+
+        self.assertEqual(first_files, [])
+        self.assertEqual(len(second_files), 1)
+        self.assertEqual(second_files[0].stem, run_id)
 
 
 class TestToolExecution(unittest.TestCase):

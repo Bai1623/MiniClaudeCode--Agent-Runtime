@@ -8,7 +8,7 @@ miniClaudeCode now contains two completed engineering blocks:
    Centralized tool execution with tool discovery, JSON Schema validation, permission checks, diff preview, timeout, retry, result compression, and JSONL tracing.
 
 2. Planner Executor Evaluator Long Task Harness
-   A long-running task harness with ArtifactStore, Planner, Evaluator, Executor, TaskHarness, FinalReportGenerator, and CLI entry points. It supports task planning, staged execution, deterministic evaluation, repair feedback loops, run artifacts, and final reports.
+   A long-running task harness with ArtifactStore, Planner, Evaluator, Executor, TaskHarness, FinalReportGenerator, and CLI entry points. It supports task planning, staged execution, deterministic evaluation, repair feedback loops, run artifacts, trace colocation, audit summaries, and final reports.
 
 Useful harness commands:
 
@@ -237,7 +237,9 @@ Claude 返回文本或 tool_use
     "max_output_chars": 50000,
     "max_tool_result_chars": 12000,
     "tool_result_head_chars": 8000,
-    "tool_result_tail_chars": 4000
+    "tool_result_tail_chars": 4000,
+    "enabled_tools": [],
+    "disabled_tools": []
   },
   "safety": {
     "permission_mode": "ask",
@@ -258,6 +260,8 @@ Claude 返回文本或 tool_use
 | model.max_context_messages | 100 | 上下文最多保留多少条消息 |
 | tool_runtime.max_output_chars | 50000 | 工具原始输出字符上限 |
 | tool_runtime.max_tool_result_chars | 12000 | 返回给模型的工具结果上限 |
+| tool_runtime.enabled_tools | [] | 非空时只启用列出的工具 |
+| tool_runtime.disabled_tools | [] | 禁用列出的工具 |
 | safety.permission_mode | ask | 默认权限模式 |
 | safety.allowed_commands | 内置安全命令列表 | ask 模式下可自动执行的命令前缀 |
 | safety.denied_patterns | 内置危险模式列表 | 始终拒绝的 bash 命令片段 |
@@ -273,10 +277,14 @@ Claude 返回文本或 tool_use
 | MINICLAUDECODE_PERMISSION_MODE | safety.permission_mode |
 | MINICLAUDECODE_ALLOWED_COMMANDS | safety.allowed_commands，逗号分隔 |
 | MINICLAUDECODE_DENIED_PATTERNS | safety.denied_patterns，逗号分隔 |
+| MINICLAUDECODE_ENABLED_TOOLS | tool_runtime.enabled_tools，逗号分隔 |
+| MINICLAUDECODE_DISABLED_TOOLS | tool_runtime.disabled_tools，逗号分隔 |
 | MINICLAUDECODE_HARNESS_RUNS_DIR | harness.runs_dir |
 | MINICLAUDECODE_MAX_REPAIR_ROUNDS | harness.max_repair_rounds |
 
 命令行参数会覆盖配置文件和环境变量，例如 `--model`、`--mode`、`--max-turns` 和 `--max-repair-rounds`。
+
+Harness 模式会把 AgentLoop 的 tool trace 写入当前 run 的 `traces/` 目录；`final_report.md` 会汇总 events、tool calls、evaluation checks、repair rounds、git diff 和 test result，方便复盘一次长任务运行。
 
 ## 测试
 

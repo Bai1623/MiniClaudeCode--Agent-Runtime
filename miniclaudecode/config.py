@@ -28,6 +28,8 @@ class ToolRuntimeConfig:
     max_tool_result_chars: int = 12_000
     tool_result_head_chars: int = 8_000
     tool_result_tail_chars: int = 4_000
+    enabled_tools: list[str] = field(default_factory=list)
+    disabled_tools: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -72,6 +74,8 @@ class Config:
         max_tool_result_chars: int | None = None,
         tool_result_head_chars: int | None = None,
         tool_result_tail_chars: int | None = None,
+        enabled_tools: list[str] | None = None,
+        disabled_tools: list[str] | None = None,
         permission_mode: PermissionMode | str | None = None,
         allowed_commands: list[str] | None = None,
         denied_patterns: list[str] | None = None,
@@ -99,6 +103,10 @@ class Config:
             self.tool_runtime.tool_result_head_chars = tool_result_head_chars
         if tool_result_tail_chars is not None:
             self.tool_runtime.tool_result_tail_chars = tool_result_tail_chars
+        if enabled_tools is not None:
+            self.tool_runtime.enabled_tools = list(enabled_tools)
+        if disabled_tools is not None:
+            self.tool_runtime.disabled_tools = list(disabled_tools)
         if permission_mode is not None:
             self.safety.permission_mode = _parse_permission_mode(permission_mode)
         if allowed_commands is not None:
@@ -182,6 +190,22 @@ class Config:
     def denied_patterns(self, value: list[str]) -> None:
         self.safety.denied_patterns = value
 
+    @property
+    def enabled_tools(self) -> list[str]:
+        return self.tool_runtime.enabled_tools
+
+    @enabled_tools.setter
+    def enabled_tools(self, value: list[str]) -> None:
+        self.tool_runtime.enabled_tools = value
+
+    @property
+    def disabled_tools(self) -> list[str]:
+        return self.tool_runtime.disabled_tools
+
+    @disabled_tools.setter
+    def disabled_tools(self, value: list[str]) -> None:
+        self.tool_runtime.disabled_tools = value
+
 
 def load_config(
     config_path: str | Path | None = None,
@@ -232,6 +256,10 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         values["safety.allowed_commands"] = _split_csv(env["MINICLAUDECODE_ALLOWED_COMMANDS"])
     if "MINICLAUDECODE_DENIED_PATTERNS" in env:
         values["safety.denied_patterns"] = _split_csv(env["MINICLAUDECODE_DENIED_PATTERNS"])
+    if "MINICLAUDECODE_ENABLED_TOOLS" in env:
+        values["tool_runtime.enabled_tools"] = _split_csv(env["MINICLAUDECODE_ENABLED_TOOLS"])
+    if "MINICLAUDECODE_DISABLED_TOOLS" in env:
+        values["tool_runtime.disabled_tools"] = _split_csv(env["MINICLAUDECODE_DISABLED_TOOLS"])
     _apply_mapping(config, values)
 
 
@@ -263,6 +291,10 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.tool_runtime.tool_result_head_chars = _parse_int(key, value)
     elif key in {"tool_result_tail_chars", "tool_runtime.tool_result_tail_chars"}:
         config.tool_runtime.tool_result_tail_chars = _parse_int(key, value)
+    elif key in {"enabled_tools", "tool_runtime.enabled_tools"}:
+        config.tool_runtime.enabled_tools = _parse_string_list(key, value)
+    elif key in {"disabled_tools", "tool_runtime.disabled_tools"}:
+        config.tool_runtime.disabled_tools = _parse_string_list(key, value)
     elif key in {"permission_mode", "safety.permission_mode"}:
         config.safety.permission_mode = _parse_permission_mode(value)
     elif key in {"allowed_commands", "safety.allowed_commands"}:

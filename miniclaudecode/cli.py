@@ -173,9 +173,10 @@ def build_config(args: argparse.Namespace) -> Config:
 def build_agent(args: argparse.Namespace, config: Config | None = None) -> AgentLoop:
     from .agent_loop import AgentLoop
 
+    config = config or build_config(args)
     return AgentLoop(
-        config=config or build_config(args),
-        registry=ToolRegistry.default(),
+        config=config,
+        registry=ToolRegistry.default(config=config),
     )
 
 

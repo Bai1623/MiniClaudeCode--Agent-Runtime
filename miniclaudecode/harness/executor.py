@@ -13,6 +13,9 @@ class AgentRunner(Protocol):
     def run(self, user_message: str) -> str:
         ...
 
+    def set_trace_dir(self, trace_dir: str) -> None:
+        ...
+
 
 @dataclass(frozen=True)
 class ExecutionResult:
@@ -33,6 +36,10 @@ class Executor:
 
     def __init__(self, runner: AgentRunner) -> None:
         self.runner = runner
+
+    def set_trace_dir(self, trace_dir: str) -> None:
+        if hasattr(self.runner, "set_trace_dir"):
+            self.runner.set_trace_dir(trace_dir)
 
     def execute_task(
         self,

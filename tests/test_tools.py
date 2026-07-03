@@ -6,14 +6,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from miniclaudecode.config import Config
+from miniclaudecode.runtime.tool_loader import discover_tool_specs, discover_tools
 from miniclaudecode.tools.base import ToolRegistry
 from miniclaudecode.tools.bash_tool import BashTool
+from miniclaudecode.tools.file_edit import FileEditTool
 from miniclaudecode.tools.file_read import FileReadTool
 from miniclaudecode.tools.file_write import FileWriteTool
-from miniclaudecode.tools.file_edit import FileEditTool
 from miniclaudecode.tools.glob_tool import GlobTool
 from miniclaudecode.tools.grep_tool import GrepTool
-from miniclaudecode.runtime.tool_loader import discover_tools
 
 
 class TestToolRegistry(unittest.TestCase):
@@ -48,6 +49,37 @@ class TestToolRegistry(unittest.TestCase):
         tools = discover_tools()
         names = {tool.name for tool in tools}
         self.assertEqual(names, {"bash", "read_file", "write_file", "edit_file", "glob", "grep"})
+
+    def test_discovery_exposes_tool_manifests(self):
+        specs = discover_tool_specs()
+        manifests = {spec.manifest.name: spec.manifest for spec in specs}
+
+        self.assertEqual(set(manifests), {"bash", "read_file", "write_file", "edit_file", "glob", "grep"})
+        self.assertEqual(manifests["read_file"].version, "1.0.0")
+        self.assertTrue(manifests["read_file"].read_only)
+        self.assertIn("read", manifests["read_file"].capabilities)
+        self.assertFalse(manifests["write_file"].read_only)
+
+    def test_discovery_filters_disabled_tools(self):
+        config = Config(disabled_tools=["bash", "write_file"])
+
+        tools = discover_tools(config=config)
+        names = {tool.name for tool in tools}
+        specs = discover_tool_specs(config=config)
+        disabled = {spec.manifest.name for spec in specs if not spec.enabled}
+
+        self.assertNotIn("bash", names)
+        self.assertNotIn("write_file", names)
+        self.assertEqual(disabled, {"bash", "write_file"})
+
+    def test_registry_exports_manifests(self):
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        manifests = registry.manifests()
+
+        self.assertEqual([manifest["name"] for manifest in manifests], ["read_file"])
+        self.assertTrue(manifests[0]["read_only"])
+        self.assertEqual(manifests[0]["enabled"], True)
 
     def test_default_tool_runtime_properties(self):
         registry = ToolRegistry.default()

@@ -35,6 +35,8 @@ class TestConfigDefaults(unittest.TestCase):
             max_turns=7,
             permission_mode="auto",
             max_tool_result_chars=42,
+            enabled_tools=["read_file"],
+            disabled_tools=["bash"],
             harness_runs_dir="runs",
             max_repair_rounds=3,
         )
@@ -43,6 +45,8 @@ class TestConfigDefaults(unittest.TestCase):
         self.assertEqual(config.max_turns, 7)
         self.assertEqual(config.permission_mode, PermissionMode.AUTO)
         self.assertEqual(config.tool_runtime.max_tool_result_chars, 42)
+        self.assertEqual(config.tool_runtime.enabled_tools, ["read_file"])
+        self.assertEqual(config.tool_runtime.disabled_tools, ["bash"])
         self.assertEqual(config.harness.runs_dir, "runs")
         self.assertEqual(config.harness.max_repair_rounds, 3)
 
@@ -70,6 +74,7 @@ class TestLoadConfig(unittest.TestCase):
                     },
                     "tool_runtime": {
                         "max_tool_result_chars": 100,
+                        "enabled_tools": ["read_file", "grep"],
                     },
                     "safety": {
                         "permission_mode": "plan",
@@ -88,6 +93,7 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.model.model, "file-model")
         self.assertEqual(config.model.max_turns, 11)
         self.assertEqual(config.tool_runtime.max_tool_result_chars, 100)
+        self.assertEqual(config.tool_runtime.enabled_tools, ["read_file", "grep"])
         self.assertEqual(config.safety.permission_mode, PermissionMode.PLAN)
         self.assertEqual(config.safety.allowed_commands, ["git status"])
         self.assertEqual(config.harness.runs_dir, "file-runs")
@@ -127,11 +133,13 @@ class TestLoadConfig(unittest.TestCase):
             env={
                 "MINICLAUDECODE_ALLOWED_COMMANDS": "git status, git diff",
                 "MINICLAUDECODE_DENIED_PATTERNS": "rm -rf /,git reset --hard",
+                "MINICLAUDECODE_DISABLED_TOOLS": "bash,write_file",
             },
         )
 
         self.assertEqual(config.safety.allowed_commands, ["git status", "git diff"])
         self.assertEqual(config.safety.denied_patterns, ["rm -rf /", "git reset --hard"])
+        self.assertEqual(config.tool_runtime.disabled_tools, ["bash", "write_file"])
 
     def test_invalid_json_config_raises(self):
         with tempfile.TemporaryDirectory() as tmpdir:

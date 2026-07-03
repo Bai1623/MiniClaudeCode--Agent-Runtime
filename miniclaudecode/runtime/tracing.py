@@ -47,6 +47,11 @@ class TraceRecorder:
         self.run_id: str | None = None
         self.trace_file: Path | None = None
 
+    def set_trace_dir(self, trace_dir: str | Path) -> None:
+        """Route subsequent trace files to a specific directory."""
+        self.trace_dir = Path(trace_dir)
+        self.trace_file = None
+
     def start_run(self) -> str:
         self.run_id = uuid.uuid4().hex
         if self.enabled:

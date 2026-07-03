@@ -48,7 +48,7 @@ class AgentLoop:
         registry: ToolRegistry | None = None,
     ) -> None:
         self.config = config or Config()
-        self.registry = registry or ToolRegistry.default()
+        self.registry = registry or ToolRegistry.default(config=self.config)
         self.permission_gate = PermissionGate(self.config)
         self.context = ConversationContext(config=self.config)
         self.client = anthropic.Anthropic()
@@ -66,6 +66,10 @@ class AgentLoop:
             permission_mode=self.config.permission_mode.value,
         )
         self.context.set_system_prompt(system_prompt)
+
+    def set_trace_dir(self, trace_dir: str) -> None:
+        """Route subsequent tool traces to the provided directory."""
+        self.tracer.set_trace_dir(trace_dir)
 
     def run(self, user_message: str) -> str:
         """Process a user message through the agent loop, returning the final text response."""

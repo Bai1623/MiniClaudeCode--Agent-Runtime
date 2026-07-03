@@ -58,6 +58,8 @@ class TaskHarness:
         artifacts = self.store.create_run()
         self.store.write_request(artifacts, request)
         self.store.append_event(artifacts, {"type": "run_created", "run_id": artifacts.run_id})
+        if hasattr(self.executor, "set_trace_dir"):
+            self.executor.set_trace_dir(str(artifacts.traces_dir))
 
         plan = self.planner.build_plan(goal=goal, tasks=tasks, spec=spec)
         self.planner.write_plan_artifacts(self.store, artifacts, plan)
