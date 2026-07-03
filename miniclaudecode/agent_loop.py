@@ -97,7 +97,7 @@ class AgentLoop:
     def _call_api(self) -> Any:
         """Call the Anthropic API with streaming output enabled."""
         with self.client.messages.stream(
-            model=self.config.model,
+            model=self.config.model.model,
             max_tokens=8192,
             system=self.context.system_prompt,
             tools=self.registry.api_schemas(),

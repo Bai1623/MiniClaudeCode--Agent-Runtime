@@ -43,6 +43,15 @@ class PermissionGate:
         # Layer 2: mode-based check
         mode = self.config.permission_mode
 
+        if tool.name == "bash":
+            command = str(params.get("command", ""))
+            for pattern in self.config.denied_patterns:
+                if pattern in command:
+                    return ToolResult(
+                        output=f"Permission denied: command matches denied pattern '{pattern}'",
+                        is_error=True,
+                    )
+
         if mode == PermissionMode.PLAN:
             write_tools = {"bash", "write_file", "edit_file"}
             if tool.name in write_tools:

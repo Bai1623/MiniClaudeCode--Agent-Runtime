@@ -1,2 +1,2 @@
-anthropic>=0.42.0
-jsonschema>=4.0.0
+# pyproject.toml is the authoritative dependency source.
+-e .

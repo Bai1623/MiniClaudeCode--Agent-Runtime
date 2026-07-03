@@ -6,9 +6,11 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr
 from io import StringIO
+from pathlib import Path
 from unittest.mock import patch
 
 from miniclaudecode.cli import (
+    build_config,
     build_parser,
     default_harness_tasks,
     list_harness_runs,
@@ -16,6 +18,7 @@ from miniclaudecode.cli import (
     run_git_summary,
     run_harness,
 )
+from miniclaudecode.config import PermissionMode
 from miniclaudecode.git_workflow.diff_summary import DiffSummary, FileChange
 from miniclaudecode.git_workflow.test_runner import TestRunResult
 from miniclaudecode.git_workflow.workflow import GitWorkflowReport
@@ -27,6 +30,8 @@ class TestCliHarnessOptions(unittest.TestCase):
     def test_parser_accepts_harness_options(self):
         parser = build_parser()
         args = parser.parse_args([
+            "--config",
+            "config.json",
             "--run-harness",
             "--harness-task",
             "Task one",
@@ -38,9 +43,39 @@ class TestCliHarnessOptions(unittest.TestCase):
         ])
 
         self.assertTrue(args.run_harness)
+        self.assertEqual(args.config, "config.json")
         self.assertEqual(args.harness_task, ["Task one", "Task two"])
         self.assertEqual(args.max_repair_rounds, 2)
         self.assertEqual(args.prompt, "Build feature")
+
+    def test_build_config_uses_cli_overrides(self):
+        parser = build_parser()
+        args = parser.parse_args([
+            "--model",
+            "cli-model",
+            "--mode",
+            "plan",
+            "--max-turns",
+            "5",
+        ])
+
+        with patch("miniclaudecode.config.os.environ", {}):
+            config = build_config(args)
+
+        self.assertEqual(config.model.model, "cli-model")
+        self.assertEqual(config.permission_mode, PermissionMode.PLAN)
+        self.assertEqual(config.max_turns, 5)
+
+    def test_build_config_loads_harness_runs_dir_from_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text('{"harness": {"runs_dir": "custom-runs"}}', encoding="utf-8")
+            args = build_parser().parse_args(["--config", str(config_path)])
+
+            with patch("miniclaudecode.config.os.environ", {}):
+                config = build_config(args)
+
+        self.assertEqual(config.harness.runs_dir, "custom-runs")
 
     def test_default_harness_tasks_uses_prompt_when_no_task_titles(self):
         tasks = default_harness_tasks("Build feature", None)

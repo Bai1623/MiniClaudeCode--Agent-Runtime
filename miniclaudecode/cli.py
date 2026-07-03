@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import TYPE_CHECKING
 
-from .config import Config, PermissionMode
+from .config import Config, PermissionMode, load_config
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
 from .harness.executor import Executor
@@ -19,6 +20,9 @@ from .harness.planner import Planner
 from .harness.report import FinalReportGenerator
 from .harness.task_harness import TaskHarness
 from .tools.base import ToolRegistry
+
+if TYPE_CHECKING:
+    from .agent_loop import AgentLoop
 
 
 BANNER = r"""
@@ -40,16 +44,21 @@ def build_parser() -> argparse.ArgumentParser:
         description="miniClaudeCode -- a distilled Claude Code agent loop",
     )
     parser.add_argument(
-        "--model", default="claude-sonnet-4-20250514",
-        help="Anthropic model to use (default: claude-sonnet-4-20250514)",
+        "--config",
+        default=None,
+        help="Path to a JSON config file. CLI flags override file and environment values.",
     )
     parser.add_argument(
-        "--mode", choices=["ask", "auto", "plan"], default="ask",
-        help="Permission mode (default: ask)",
+        "--model", default=None,
+        help="Anthropic model to use.",
     )
     parser.add_argument(
-        "--max-turns", type=int, default=30,
-        help="Max agent loop turns per message (default: 30)",
+        "--mode", choices=["ask", "auto", "plan"], default=None,
+        help="Permission mode.",
+    )
+    parser.add_argument(
+        "--max-turns", type=int, default=None,
+        help="Max agent loop turns per message.",
     )
     parser.add_argument(
         "--list-runs",
@@ -84,14 +93,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--harness-spec",
-        default="",
+        default=None,
         help="Optional spec text to write into the harness run.",
     )
     parser.add_argument(
         "--max-repair-rounds",
         type=int,
-        default=1,
-        help="Max evaluator repair rounds in harness mode (default: 1).",
+        default=None,
+        help="Max evaluator repair rounds in harness mode.",
     )
     parser.add_argument(
         "prompt", nargs="?", default=None,
@@ -100,7 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_interactive(agent: "AgentLoop") -> None:
+def run_interactive(agent: AgentLoop) -> None:
     """Interactive REPL loop."""
     print(BANNER)
 
@@ -150,18 +159,22 @@ def run_interactive(agent: "AgentLoop") -> None:
 
 
 def build_config(args: argparse.Namespace) -> Config:
-    return Config(
-        model=args.model,
-        permission_mode=PermissionMode(args.mode),
-        max_turns=args.max_turns,
+    return load_config(
+        args.config,
+        cli_overrides={
+            "model.model": args.model,
+            "safety.permission_mode": args.mode,
+            "model.max_turns": args.max_turns,
+            "harness.max_repair_rounds": args.max_repair_rounds,
+        },
     )
 
 
-def build_agent(args: argparse.Namespace) -> "AgentLoop":
+def build_agent(args: argparse.Namespace, config: Config | None = None) -> AgentLoop:
     from .agent_loop import AgentLoop
 
     return AgentLoop(
-        config=build_config(args),
+        config=config or build_config(args),
         registry=ToolRegistry.default(),
     )
 
@@ -191,24 +204,25 @@ def default_harness_tasks(prompt: str, task_titles: list[str] | None) -> list[di
     ]
 
 
-def run_harness(args: argparse.Namespace) -> int:
+def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
     if not args.prompt:
         print("Error: --run-harness requires a prompt.", file=sys.stderr)
         return 2
 
-    store = ArtifactStore()
-    agent = build_agent(args)
+    config = config or build_config(args)
+    store = ArtifactStore(base_dir=config.harness.runs_dir)
+    agent = build_agent(args, config=config)
     harness = TaskHarness(
         store=store,
         planner=Planner(),
         executor=Executor(agent),
         evaluator=Evaluator(),
-        max_repair_rounds=args.max_repair_rounds,
+        max_repair_rounds=config.harness.max_repair_rounds,
     )
     result = harness.run(
         request=args.prompt,
         goal=args.prompt,
-        spec=args.harness_spec,
+        spec=args.harness_spec or "",
         tasks=default_harness_tasks(args.prompt, args.harness_task),
     )
     git_report = build_git_workflow_report(args)
@@ -252,13 +266,14 @@ def run_git_commit_message(args: argparse.Namespace, output=sys.stdout) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    config = build_config(args)
 
     if args.list_runs:
-        list_harness_runs(ArtifactStore())
+        list_harness_runs(ArtifactStore(base_dir=config.harness.runs_dir))
         return 0
 
     if args.run_harness:
-        return run_harness(args)
+        return run_harness(args, config=config)
 
     if args.git_summary:
         return run_git_summary(args)
@@ -266,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.git_commit_message:
         return run_git_commit_message(args)
 
-    agent = build_agent(args)
+    agent = build_agent(args, config=config)
 
     if args.prompt:
         try:

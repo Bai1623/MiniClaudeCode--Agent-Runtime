@@ -77,7 +77,7 @@ miniClaudeCode-dev/
 
 ## 安装
 
-建议使用 Python 3.11 或更新版本。
+建议使用 Python 3.11 或更新版本。项目依赖以 `pyproject.toml` 为唯一权威来源；`requirements.txt` 只保留给习惯使用 `pip install -r requirements.txt` 的环境，并委托安装当前包。
 
 ```bash
 python3 -m venv .venv
@@ -95,6 +95,12 @@ macOS 或 Linux:
 ```bash
 source .venv/bin/activate
 .venv/bin/python -m pip install -e ".[dev]"
+```
+
+只安装运行依赖也可以使用：
+
+```bash
+.venv/bin/python -m pip install -e .
 ```
 
 运行前需要配置 Anthropic API Key。
@@ -129,6 +135,12 @@ python -m miniclaudecode "帮我查看当前目录有哪些 Python 文件"
 
 ```bash
 python -m miniclaudecode --model claude-sonnet-4-20250514 --mode ask --max-turns 30
+```
+
+指定配置文件：
+
+```bash
+python -m miniclaudecode --config miniclaudecode.config.json "查看项目状态"
 ```
 
 交互模式内置命令：
@@ -206,17 +218,65 @@ Claude 返回文本或 tool_use
 
 ## 配置
 
-默认配置在 miniclaudecode/config.py 中：
+配置现在拆分为 `ModelConfig`、`ToolRuntimeConfig`、`SafetyConfig` 和 `HarnessConfig`。加载优先级为：
+
+```text
+默认值 < JSON 配置文件 < 环境变量 < CLI 参数
+```
+
+示例配置文件：
+
+```json
+{
+  "model": {
+    "model": "claude-sonnet-4-20250514",
+    "max_turns": 30,
+    "max_context_messages": 100
+  },
+  "tool_runtime": {
+    "max_output_chars": 50000,
+    "max_tool_result_chars": 12000,
+    "tool_result_head_chars": 8000,
+    "tool_result_tail_chars": 4000
+  },
+  "safety": {
+    "permission_mode": "ask",
+    "allowed_commands": ["ls", "cat", "git status", "git diff", "python3"],
+    "denied_patterns": ["rm -rf /", "git reset --hard", "git push --force"]
+  },
+  "harness": {
+    "runs_dir": ".miniclaudecode/runs",
+    "max_repair_rounds": 1
+  }
+}
+```
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
-| model | claude-sonnet-4-20250514 | 默认调用的 Anthropic 模型 |
-| max_turns | 30 | 单次用户输入最多循环多少轮 |
-| max_context_messages | 100 | 上下文最多保留多少条消息 |
-| max_output_chars | 50000 | 工具输出字符上限 |
-| permission_mode | ask | 默认权限模式 |
+| model.model | claude-sonnet-4-20250514 | 默认调用的 Anthropic 模型 |
+| model.max_turns | 30 | 单次用户输入最多循环多少轮 |
+| model.max_context_messages | 100 | 上下文最多保留多少条消息 |
+| tool_runtime.max_output_chars | 50000 | 工具原始输出字符上限 |
+| tool_runtime.max_tool_result_chars | 12000 | 返回给模型的工具结果上限 |
+| safety.permission_mode | ask | 默认权限模式 |
+| safety.allowed_commands | 内置安全命令列表 | ask 模式下可自动执行的命令前缀 |
+| safety.denied_patterns | 内置危险模式列表 | 始终拒绝的 bash 命令片段 |
+| harness.runs_dir | .miniclaudecode/runs | harness 运行产物目录 |
+| harness.max_repair_rounds | 1 | evaluator 失败后的最大修复轮数 |
 
-命令行可覆盖 model、permission_mode 和 max_turns。
+常用环境变量：
+
+| 环境变量 | 对应配置 |
+| --- | --- |
+| MINICLAUDECODE_MODEL | model.model |
+| MINICLAUDECODE_MAX_TURNS | model.max_turns |
+| MINICLAUDECODE_PERMISSION_MODE | safety.permission_mode |
+| MINICLAUDECODE_ALLOWED_COMMANDS | safety.allowed_commands，逗号分隔 |
+| MINICLAUDECODE_DENIED_PATTERNS | safety.denied_patterns，逗号分隔 |
+| MINICLAUDECODE_HARNESS_RUNS_DIR | harness.runs_dir |
+| MINICLAUDECODE_MAX_REPAIR_ROUNDS | harness.max_repair_rounds |
+
+命令行参数会覆盖配置文件和环境变量，例如 `--model`、`--mode`、`--max-turns` 和 `--max-repair-rounds`。
 
 ## 测试
 
