@@ -15,7 +15,6 @@ from miniclaudecode.memory.records import (
     TaskMemory,
 )
 
-
 RecordT = TypeVar("RecordT")
 _METADATA_START = "<!-- miniclaudecode-memory:v1"
 _METADATA_END = "miniclaudecode-memory:end -->"

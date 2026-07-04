@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-
 DEFAULT_TEST_COMMAND = [sys.executable, "-m", "unittest", "discover"]
 DEFAULT_OUTPUT_LIMIT = 12_000
 

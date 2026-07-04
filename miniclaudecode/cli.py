@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .config import Config, PermissionMode, load_config
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
 from .harness.executor import Executor
-from .harness.planner import Planner
+from .harness.planner import Planner, TaskSpec
 from .harness.report import FinalReportGenerator
 from .harness.task_harness import TaskHarness
 from .tools.base import ToolRegistry
@@ -191,7 +191,7 @@ def list_harness_runs(store: ArtifactStore, output=sys.stdout) -> None:
         print(f"  {run.run_id}  {run.root}", file=output)
 
 
-def default_harness_tasks(prompt: str, task_titles: list[str] | None) -> list[dict]:
+def default_harness_tasks(prompt: str, task_titles: list[str] | None) -> list[TaskSpec | dict[str, Any]]:
     titles = task_titles or [prompt]
     return [
         {

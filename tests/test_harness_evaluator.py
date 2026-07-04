@@ -9,7 +9,12 @@ import unittest
 from pathlib import Path
 
 from miniclaudecode.harness.artifacts import ArtifactStore
-from miniclaudecode.harness.evaluator import CommandResult, EvaluationCheck, EvaluationReport, Evaluator
+from miniclaudecode.harness.evaluator import (
+    CommandResult,
+    EvaluationCheck,
+    EvaluationReport,
+    Evaluator,
+)
 from miniclaudecode.harness.planner import TaskSpec
 
 

@@ -10,7 +10,6 @@ from pathlib import Path
 from miniclaudecode.memory.project_index import FileFingerprint, ProjectIndex
 from miniclaudecode.memory.records import FileSummary
 
-
 LANGUAGES = {
     ".cfg": "config",
     ".css": "css",

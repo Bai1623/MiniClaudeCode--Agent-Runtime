@@ -6,7 +6,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any, Callable
 
 from .artifacts import ArtifactStore, RunArtifacts
 from .planner import TaskSpec

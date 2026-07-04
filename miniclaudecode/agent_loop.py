@@ -22,7 +22,7 @@ Mini flow (synchronous, simplified):
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, cast
 
 import anthropic
 
@@ -104,8 +104,8 @@ class AgentLoop:
             model=self.config.model.model,
             max_tokens=8192,
             system=self.context.system_prompt,
-            tools=self.registry.api_schemas(),
-            messages=self.context.get_api_messages(),
+            tools=cast(Any, self.registry.api_schemas()),
+            messages=cast(Any, self.context.get_api_messages()),
         ) as stream:
             for event in stream:
                 if event.type == "content_block_delta" and event.delta.type == "text_delta":

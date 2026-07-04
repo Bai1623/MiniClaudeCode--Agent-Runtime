@@ -288,12 +288,22 @@ Harness 模式会把 AgentLoop 的 tool trace 写入当前 run 的 `traces/` 目
 
 ## 测试
 
-项目使用 unittest。建议通过可编辑安装统一开发环境，确保运行时依赖和开发工具都可用。
+项目使用 unittest，并通过 Makefile 统一本地工程命令。首次开发先安装运行依赖和 dev 工具：
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
-.venv/bin/python -m unittest discover
+make install
+```
+
+常用命令：
+
+```bash
+make test       # unittest
+make coverage   # coverage run + threshold report
+make lint       # ruff check
+make format     # ruff auto-fix + format
+make typecheck  # mypy
+make build      # python -m build
+make check      # lint + typecheck + coverage + build
 ```
 
 ## 开发流程
@@ -301,8 +311,8 @@ python3 -m venv .venv
 本项目的代码变更统一遵守以下流程：
 
 1. 从 master 新建功能分支，分支名使用 feature/功能名字。
-2. 在功能分支完成修改，并运行 .venv/bin/python -m unittest discover。
-3. 测试通过后提交代码，合并回 master。
+2. 在功能分支完成修改，并运行 make check。
+3. 检查通过后提交代码，合并回 master。
 4. 将 master 推送到远程仓库。
 
 测试覆盖范围包括：

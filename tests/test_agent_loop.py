@@ -19,10 +19,10 @@ from miniclaudecode.agent_loop import AgentLoop
 from miniclaudecode.config import Config, PermissionMode
 from miniclaudecode.context import ConversationContext
 from miniclaudecode.permissions import PermissionGate
+from miniclaudecode.runtime.tool_runtime import ToolExecution
 from miniclaudecode.system_prompt import build_system_prompt
 from miniclaudecode.tools.base import ToolRegistry, ToolResult
 from miniclaudecode.tools.bash_tool import BashTool
-from miniclaudecode.runtime.tool_runtime import ToolExecution
 
 
 class TestPermissionGate(unittest.TestCase):

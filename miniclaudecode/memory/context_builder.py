@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import replace
-from typing import Iterable
 
 from miniclaudecode.memory.records import (
     ContextBundle,
@@ -14,7 +14,6 @@ from miniclaudecode.memory.records import (
     TaskMemory,
 )
 from miniclaudecode.memory.store import MemoryStore
-
 
 DEFAULT_MAX_CONTEXT_CHARS = 12_000
 ENGINEERING_KEYWORDS = {

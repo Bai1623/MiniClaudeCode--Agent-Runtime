@@ -6,7 +6,7 @@ import importlib
 import inspect
 import pkgutil
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from miniclaudecode.tools.base import Tool, ToolManifest
 
@@ -84,9 +84,10 @@ def _is_concrete_tool_class(obj: type, module_name: str) -> bool:
 
 def _instantiate_tool(tool_class: type[Tool], config: Any | None) -> Tool:
     signature = inspect.signature(tool_class)
+    constructor = cast(Any, tool_class)
     if "config" in signature.parameters:
-        return tool_class(config=config)
-    return tool_class()
+        return cast(Tool, constructor(config=config))
+    return cast(Tool, constructor())
 
 
 def _is_enabled(name: str, enabled_filter: set[str], disabled_filter: set[str]) -> bool:

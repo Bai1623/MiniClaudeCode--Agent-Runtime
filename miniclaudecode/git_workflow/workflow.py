@@ -7,7 +7,7 @@ from pathlib import Path
 
 from miniclaudecode.git_workflow.commit_message import CommitMessageGenerator
 from miniclaudecode.git_workflow.diff_summary import DiffSummary, DiffSummaryCollector, FileChange
-from miniclaudecode.git_workflow.test_runner import TestRunResult, TestRunner
+from miniclaudecode.git_workflow.test_runner import TestRunner, TestRunResult
 from miniclaudecode.git_workflow.worktree import WorktreeInspector, WorktreeStatus
 
 

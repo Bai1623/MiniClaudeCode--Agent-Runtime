@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ class FileSummary:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "FileSummary":
+    def from_dict(cls, data: dict[str, Any]) -> FileSummary:
         return cls(
             path=str(data["path"]),
             sha256=str(data["sha256"]),
@@ -45,7 +45,7 @@ class ProjectSummary:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ProjectSummary":
+    def from_dict(cls, data: dict[str, Any]) -> ProjectSummary:
         return cls(
             name=str(data["name"]),
             updated_at=str(data["updated_at"]),
@@ -69,7 +69,7 @@ class DecisionRecord:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DecisionRecord":
+    def from_dict(cls, data: dict[str, Any]) -> DecisionRecord:
         return cls(
             id=str(data["id"]),
             title=str(data["title"]),
@@ -93,7 +93,7 @@ class TaskMemory:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TaskMemory":
+    def from_dict(cls, data: dict[str, Any]) -> TaskMemory:
         return cls(
             id=str(data["id"]),
             goal=str(data["goal"]),
@@ -122,7 +122,7 @@ class ContextBundle:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ContextBundle":
+    def from_dict(cls, data: dict[str, Any]) -> ContextBundle:
         return cls(
             task=str(data["task"]),
             project_summary=str(data["project_summary"]),
@@ -132,7 +132,12 @@ class ContextBundle:
         )
 
 
-RecordT = TypeVar("RecordT")
+class RecordLoader(Protocol):
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Any: ...
+
+
+RecordT = TypeVar("RecordT", bound=RecordLoader)
 
 
 def _record_list(record_type: type[RecordT], items: Any) -> list[RecordT]:

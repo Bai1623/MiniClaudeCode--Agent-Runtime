@@ -12,7 +12,6 @@ from pathlib import Path
 
 from miniclaudecode.memory.records import FileSummary
 
-
 DEFAULT_EXCLUDED_DIRS = frozenset(
     {
         ".git",
