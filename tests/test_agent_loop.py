@@ -20,9 +20,60 @@ from miniclaudecode.config import Config, PermissionMode
 from miniclaudecode.context import ConversationContext
 from miniclaudecode.permissions import PermissionGate
 from miniclaudecode.runtime.tool_runtime import ToolExecution
+from miniclaudecode.runtime.tracing import TraceRecorder
 from miniclaudecode.system_prompt import build_system_prompt
-from miniclaudecode.tools.base import ToolRegistry, ToolResult
+from miniclaudecode.tools.base import Tool, ToolRegistry, ToolResult
 from miniclaudecode.tools.bash_tool import BashTool
+
+
+class FakeStream:
+    def __init__(self, response, events=None):
+        self.response = response
+        self.events = events or []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def __iter__(self):
+        return iter(self.events)
+
+    def get_final_message(self):
+        return self.response
+
+
+class FakeMessages:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        return FakeStream(self.responses.pop(0))
+
+
+class FakeClient:
+    def __init__(self, responses):
+        self.messages = FakeMessages(responses)
+
+
+class StaticTool(Tool):
+    @property
+    def name(self) -> str:
+        return "static"
+
+    @property
+    def description(self) -> str:
+        return "Return static output."
+
+    @property
+    def input_schema(self):
+        return {"type": "object", "properties": {}, "required": []}
+
+    def execute(self, params):
+        return ToolResult(output="tool output")
 
 
 class TestPermissionGate(unittest.TestCase):
@@ -109,6 +160,7 @@ class TestAgentLoopRuntimeIntegration(unittest.TestCase):
     def test_execute_tool_calls_delegates_to_runtime(self):
         agent = SimpleNamespace()
         agent.context = ConversationContext(config=Config())
+        agent.output = StringIO()
 
         calls = []
 
@@ -138,6 +190,86 @@ class TestAgentLoopRuntimeIntegration(unittest.TestCase):
             "content": "runtime ok",
             "is_error": False,
         })
+
+    def test_run_with_result_uses_injected_client_and_output(self):
+        response = SimpleNamespace(
+            content=[
+                SimpleNamespace(type="text", text="final answer"),
+            ]
+        )
+        output = StringIO()
+        agent = AgentLoop(
+            config=Config(permission_mode=PermissionMode.AUTO),
+            client=FakeClient([response]),
+            output=output,
+            tracer=TraceRecorder(enabled=False),
+        )
+
+        result = agent.run_with_result("hello")
+
+        self.assertEqual(result.text, "final answer")
+        self.assertEqual(result.turns, 1)
+        self.assertFalse(result.reached_max_turns)
+        self.assertEqual(output.getvalue(), "")
+        self.assertEqual(agent.client.messages.calls[0]["model"], agent.config.model.model)
+
+    def test_run_executes_tool_call_then_finishes(self):
+        registry = ToolRegistry()
+        registry.register(StaticTool())
+        first_response = SimpleNamespace(
+            content=[
+                SimpleNamespace(
+                    type="tool_use",
+                    id="toolu_1",
+                    name="static",
+                    input={},
+                )
+            ]
+        )
+        second_response = SimpleNamespace(
+            content=[
+                SimpleNamespace(type="text", text="done"),
+            ]
+        )
+        output = StringIO()
+        agent = AgentLoop(
+            config=Config(permission_mode=PermissionMode.AUTO),
+            registry=registry,
+            client=FakeClient([first_response, second_response]),
+            output=output,
+            tracer=TraceRecorder(enabled=False),
+        )
+
+        result = agent.run_with_result("call tool")
+
+        self.assertEqual(result.text, "done")
+        self.assertEqual(result.turns, 2)
+        self.assertIn("[Tool: static]", output.getvalue())
+        self.assertIn("[OK] tool output", output.getvalue())
+        self.assertEqual(agent.context.messages[-2]["content"][0]["content"], "tool output")
+
+    def test_run_result_marks_max_turns(self):
+        response = SimpleNamespace(
+            content=[
+                SimpleNamespace(
+                    type="tool_use",
+                    id="toolu_1",
+                    name="missing",
+                    input={},
+                )
+            ]
+        )
+        agent = AgentLoop(
+            config=Config(max_turns=1, permission_mode=PermissionMode.AUTO),
+            client=FakeClient([response]),
+            output=StringIO(),
+            tracer=TraceRecorder(enabled=False),
+        )
+
+        result = agent.run_with_result("loop")
+
+        self.assertTrue(result.reached_max_turns)
+        self.assertEqual(result.turns, 1)
 
 
 if __name__ == "__main__":

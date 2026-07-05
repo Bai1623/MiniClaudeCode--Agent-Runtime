@@ -22,9 +22,8 @@ Mini flow (synchronous, simplified):
 from __future__ import annotations
 
 import sys
-from typing import Any, cast
-
-import anthropic
+from dataclasses import dataclass
+from typing import Any, TextIO, cast
 
 from .config import Config
 from .context import ConversationContext
@@ -33,6 +32,20 @@ from .runtime.tool_runtime import ToolRuntime
 from .runtime.tracing import TraceRecorder
 from .system_prompt import build_system_prompt
 from .tools.base import ToolRegistry
+
+
+@dataclass(frozen=True)
+class AgentRunResult:
+    text: str
+    run_id: str
+    turns: int
+    reached_max_turns: bool = False
+
+
+def _default_client() -> Any:
+    import anthropic
+
+    return anthropic.Anthropic()
 
 
 class AgentLoop:
@@ -46,19 +59,24 @@ class AgentLoop:
         self,
         config: Config | None = None,
         registry: ToolRegistry | None = None,
+        client: Any | None = None,
+        output: TextIO | None = None,
+        tracer: TraceRecorder | None = None,
+        tool_runtime: ToolRuntime | None = None,
     ) -> None:
         self.config = config or Config()
         self.registry = registry or ToolRegistry.default(config=self.config)
         self.permission_gate = PermissionGate(self.config)
         self.context = ConversationContext(config=self.config)
-        self.client = anthropic.Anthropic()
-        self.tracer = TraceRecorder()
-        self.tool_runtime = ToolRuntime(
+        self.client = client or _default_client()
+        self.output = output or sys.stdout
+        self.tracer = tracer or TraceRecorder()
+        self.tool_runtime = tool_runtime or ToolRuntime(
             registry=self.registry,
             permission_gate=self.permission_gate,
             config=self.config,
             tracer=self.tracer,
-            output=sys.stdout,
+            output=self.output,
         )
 
         system_prompt = build_system_prompt(
@@ -73,11 +91,17 @@ class AgentLoop:
 
     def run(self, user_message: str) -> str:
         """Process a user message through the agent loop, returning the final text response."""
+        return self.run_with_result(user_message).text
+
+    def run_with_result(self, user_message: str) -> AgentRunResult:
+        """Process a user message and return structured run metadata."""
         self.context.add_user_message(user_message)
         run_id = self.tracer.start_run()
         final_text = ""
+        turns_completed = 0
 
         for turn in range(1, self.config.max_turns + 1):
+            turns_completed = turn
             response = self._call_api()
             tool_calls, text_parts = self._parse_response(response)
 
@@ -95,8 +119,19 @@ class AgentLoop:
         else:
             if not final_text:
                 final_text = "(max turns reached without a final response)"
+            return AgentRunResult(
+                text=final_text,
+                run_id=run_id,
+                turns=turns_completed,
+                reached_max_turns=True,
+            )
 
-        return final_text
+        return AgentRunResult(
+            text=final_text,
+            run_id=run_id,
+            turns=turns_completed,
+            reached_max_turns=False,
+        )
 
     def _call_api(self) -> Any:
         """Call the Anthropic API with streaming output enabled."""
@@ -109,8 +144,8 @@ class AgentLoop:
         ) as stream:
             for event in stream:
                 if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                    sys.stdout.write(event.delta.text)
-                    sys.stdout.flush()
+                    self.output.write(event.delta.text)
+                    self.output.flush()
             return stream.get_final_message()
 
     def _parse_response(self, response: Any) -> tuple[list[dict], list[str]]:
@@ -127,12 +162,12 @@ class AgentLoop:
                     "name": block.name,
                     "input": block.input,
                 })
-                sys.stdout.write(f"\n[Tool: {block.name}] ")
+                self.output.write(f"\n[Tool: {block.name}] ")
                 _input_preview = str(block.input)
                 if len(_input_preview) > 120:
                     _input_preview = _input_preview[:120] + "..."
-                sys.stdout.write(f"{_input_preview}\n")
-                sys.stdout.flush()
+                self.output.write(f"{_input_preview}\n")
+                self.output.flush()
 
         return tool_calls, text_parts
 
@@ -146,8 +181,8 @@ class AgentLoop:
             if len(output_preview) > 300:
                 output_preview = output_preview[:300] + "..."
             status = "ERROR" if result.is_error else "OK"
-            sys.stdout.write(f"  -> [{status}] {output_preview}\n")
-            sys.stdout.flush()
+            self.output.write(f"  -> [{status}] {output_preview}\n")
+            self.output.flush()
             tool_results.append(execution.to_api_result())
 
         # Append all tool results as a single user message (Anthropic API format)
