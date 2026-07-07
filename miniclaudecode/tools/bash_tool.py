@@ -15,6 +15,8 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
+from miniclaudecode.workspace import WorkspacePolicy
+
 from .base import Tool, ToolResult
 
 
@@ -26,6 +28,9 @@ class BashTool(Tool):
         ":(){ :|:& };:",
     ]
 
+    def __init__(self, config: Any | None = None) -> None:
+        self.workspace = WorkspacePolicy.from_config(config)
+
     @property
     def name(self) -> str:
         return "bash"
@@ -34,7 +39,7 @@ class BashTool(Tool):
     def description(self) -> str:
         return (
             "Execute a bash command. Use for running scripts, installing packages, "
-            "git operations, and any shell task. Commands run in the current working directory."
+            "git operations, and any shell task. Commands run in the configured workspace root."
         )
 
     @property
@@ -52,6 +57,9 @@ class BashTool(Tool):
 
     def check_permissions(self, params: dict[str, Any]) -> str | None:
         cmd = params.get("command", "")
+        workspace_denial = self.workspace.validate_command(cmd)
+        if workspace_denial is not None:
+            return workspace_denial
         for pattern in self.DANGEROUS_PATTERNS:
             if pattern in cmd:
                 return f"Blocked: command matches dangerous pattern '{pattern}'"
@@ -61,6 +69,16 @@ class BashTool(Tool):
         command = params.get("command", "")
         if not command.strip():
             return ToolResult(output="Error: empty command", is_error=True)
+        workspace_denial = self.workspace.validate_command(command)
+        if workspace_denial is not None:
+            return ToolResult(
+                output=f"Permission denied: {workspace_denial}",
+                is_error=True,
+                error_type="workspace_violation",
+            )
+        denial = self.check_permissions(params)
+        if denial is not None:
+            return ToolResult(output=f"Permission denied: {denial}", is_error=True, error_type="permission_denied")
         try:
             result = subprocess.run(
                 command,
@@ -68,7 +86,7 @@ class BashTool(Tool):
                 capture_output=True,
                 text=True,
                 timeout=120,
-                cwd=None,
+                cwd=self.workspace.root,
             )
             output_parts = []
             if result.stdout:

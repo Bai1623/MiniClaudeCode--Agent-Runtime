@@ -251,7 +251,7 @@ class TestToolRuntime(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "preview.txt"
             registry = ToolRegistry()
-            registry.register(FileWriteTool())
+            registry.register(FileWriteTool(config=Config(workspace_root=tmpdir)))
             config = Config(permission_mode=PermissionMode.ASK)
             runtime = self.make_runtime(
                 registry,
@@ -259,7 +259,7 @@ class TestToolRuntime(unittest.TestCase):
                 confirm_callback=lambda _tool_name, _preview: False,
             )
             execution = runtime.invoke(
-                {"id": "1", "name": "write_file", "input": {"path": str(path), "content": "hello"}},
+                {"id": "1", "name": "write_file", "input": {"path": "preview.txt", "content": "hello"}},
                 turn=1,
                 run_id="run",
             )

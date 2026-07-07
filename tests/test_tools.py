@@ -120,64 +120,106 @@ class TestBashTool(unittest.TestCase):
         result = self.tool.execute({"command": ""})
         self.assertTrue(result.is_error)
 
+    def test_execute_blocks_absolute_path(self):
+        result = self.tool.execute({"command": "cat /etc/passwd"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
+    def test_execute_blocks_embedded_absolute_path(self):
+        result = self.tool.execute({"command": "python -c \"open('/etc/passwd').read()\""})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
+    def test_execute_blocks_home_expansion(self):
+        result = self.tool.execute({"command": "cat $HOME/.ssh/config"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
+    def test_execute_blocks_command_substitution(self):
+        result = self.tool.execute({"command": "cat $(pwd)/README.md"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
+    def test_execute_blocks_embedded_parent_path(self):
+        result = self.tool.execute({"command": "python -c \"open('../secret.txt').read()\""})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
+    def test_execute_runs_in_workspace_root(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = BashTool(config=Config(workspace_root=tmpdir))
+            result = tool.execute({"command": "pwd"})
+        self.assertFalse(result.is_error)
+        self.assertIn(tmpdir, result.output)
+
 
 class TestFileReadTool(unittest.TestCase):
-    def setUp(self):
-        self.tool = FileReadTool()
+    def make_tool(self, workspace_root: str) -> FileReadTool:
+        return FileReadTool(config=Config(workspace_root=workspace_root))
 
     def test_runtime_properties(self):
-        self.assertTrue(self.tool.retryable)
-        self.assertTrue(self.tool.is_read_only)
-        self.assertEqual(self.tool.timeout_seconds, 30)
+        tool = FileReadTool()
+        self.assertTrue(tool.retryable)
+        self.assertTrue(tool.is_read_only)
+        self.assertEqual(tool.timeout_seconds, 30)
 
     def test_read_existing_file(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("line1\nline2\nline3\n")
-            f.flush()
-            result = self.tool.execute({"path": f.name})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.txt"
+            path.write_text("line1\nline2\nline3\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({"path": "sample.txt"})
         self.assertFalse(result.is_error)
         self.assertIn("line1", result.output)
         self.assertIn("line2", result.output)
-        Path(f.name).unlink()
 
     def test_read_nonexistent(self):
-        result = self.tool.execute({"path": "/nonexistent/file.txt"})
+        result = FileReadTool().execute({"path": "nonexistent/file.txt"})
         self.assertTrue(result.is_error)
 
+    def test_read_rejects_absolute_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self.make_tool(tmpdir).execute({"path": "/etc/passwd"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
+    def test_read_rejects_parent_escape(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self.make_tool(tmpdir).execute({"path": "../secret.txt"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
     def test_read_with_offset_and_limit(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("a\nb\nc\nd\ne\n")
-            f.flush()
-            result = self.tool.execute({"path": f.name, "offset": 2, "limit": 2})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.txt"
+            path.write_text("a\nb\nc\nd\ne\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({"path": "sample.txt", "offset": 2, "limit": 2})
         self.assertFalse(result.is_error)
         self.assertIn("b", result.output)
         self.assertIn("c", result.output)
         self.assertNotIn("d", result.output)
-        Path(f.name).unlink()
 
 
 class TestFileWriteTool(unittest.TestCase):
-    def setUp(self):
-        self.tool = FileWriteTool()
+    def make_tool(self, workspace_root: str) -> FileWriteTool:
+        return FileWriteTool(config=Config(workspace_root=workspace_root))
 
     def test_write_new_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.txt"
-            result = self.tool.execute({"path": str(path), "content": "hello world"})
+            result = self.make_tool(tmpdir).execute({"path": "test.txt", "content": "hello world"})
             self.assertFalse(result.is_error)
             self.assertEqual(path.read_text(), "hello world")
 
     def test_write_creates_directories(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "sub" / "dir" / "test.txt"
-            result = self.tool.execute({"path": str(path), "content": "nested"})
+            result = self.make_tool(tmpdir).execute({"path": "sub/dir/test.txt", "content": "nested"})
             self.assertFalse(result.is_error)
             self.assertTrue(path.exists())
 
     def test_preview_new_file_diff(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.txt"
-            result = self.tool.preview({"path": str(path), "content": "hello\n"})
+            result = self.make_tool(tmpdir).preview({"path": "test.txt", "content": "hello\n"})
         self.assertFalse(result.is_error)
         self.assertIn("--- a/", result.output)
         self.assertIn("+++ b/", result.output)
@@ -185,75 +227,76 @@ class TestFileWriteTool(unittest.TestCase):
 
     def test_execute_includes_diff(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.txt"
-            result = self.tool.execute({"path": str(path), "content": "hello\n"})
+            result = self.make_tool(tmpdir).execute({"path": "test.txt", "content": "hello\n"})
         self.assertFalse(result.is_error)
         self.assertIn("Diff:", result.output)
         self.assertIn("+hello", result.output)
 
+    def test_write_rejects_parent_escape(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self.make_tool(tmpdir).execute({"path": "../outside.txt", "content": "x"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
 
 class TestFileEditTool(unittest.TestCase):
-    def setUp(self):
-        self.tool = FileEditTool()
+    def make_tool(self, workspace_root: str) -> FileEditTool:
+        return FileEditTool(config=Config(workspace_root=workspace_root))
 
     def test_replace_unique_string(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("hello world\nfoo bar\n")
-            f.flush()
-            result = self.tool.execute({
-                "path": f.name,
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.txt"
+            path.write_text("hello world\nfoo bar\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({
+                "path": "sample.txt",
                 "old_string": "foo bar",
                 "new_string": "baz qux",
             })
-        self.assertFalse(result.is_error)
-        self.assertEqual(Path(f.name).read_text(), "hello world\nbaz qux\n")
-        Path(f.name).unlink()
+            self.assertFalse(result.is_error)
+            self.assertEqual(path.read_text(), "hello world\nbaz qux\n")
 
     def test_reject_non_unique(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("aaa\naaa\n")
-            f.flush()
-            result = self.tool.execute({
-                "path": f.name,
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.txt"
+            path.write_text("aaa\naaa\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({
+                "path": "sample.txt",
                 "old_string": "aaa",
                 "new_string": "bbb",
             })
         self.assertTrue(result.is_error)
         self.assertIn("2 times", result.output)
-        Path(f.name).unlink()
 
     def test_reject_not_found(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("hello\n")
-            f.flush()
-            result = self.tool.execute({
-                "path": f.name,
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.txt"
+            path.write_text("hello\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({
+                "path": "sample.txt",
                 "old_string": "xyz",
                 "new_string": "abc",
             })
         self.assertTrue(result.is_error)
-        Path(f.name).unlink()
 
     def test_preview_edit_diff(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("hello world\nfoo bar\n")
-            f.flush()
-            result = self.tool.preview({
-                "path": f.name,
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.txt"
+            path.write_text("hello world\nfoo bar\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).preview({
+                "path": "sample.txt",
                 "old_string": "foo bar",
                 "new_string": "baz qux",
             })
         self.assertFalse(result.is_error)
         self.assertIn("-foo bar", result.output)
         self.assertIn("+baz qux", result.output)
-        Path(f.name).unlink()
 
     def test_execute_edit_includes_diff(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("hello world\nfoo bar\n")
-            f.flush()
-            result = self.tool.execute({
-                "path": f.name,
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.txt"
+            path.write_text("hello world\nfoo bar\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({
+                "path": "sample.txt",
                 "old_string": "foo bar",
                 "new_string": "baz qux",
             })
@@ -261,53 +304,74 @@ class TestFileEditTool(unittest.TestCase):
         self.assertIn("Diff:", result.output)
         self.assertIn("-foo bar", result.output)
         self.assertIn("+baz qux", result.output)
-        Path(f.name).unlink()
+
+    def test_edit_rejects_absolute_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self.make_tool(tmpdir).execute({
+                "path": "/tmp/outside.txt",
+                "old_string": "x",
+                "new_string": "y",
+            })
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
 
 
 class TestGlobTool(unittest.TestCase):
-    def setUp(self):
-        self.tool = GlobTool()
+    def make_tool(self, workspace_root: str) -> GlobTool:
+        return GlobTool(config=Config(workspace_root=workspace_root))
 
     def test_runtime_properties(self):
-        self.assertTrue(self.tool.retryable)
-        self.assertTrue(self.tool.is_read_only)
-        self.assertEqual(self.tool.timeout_seconds, 30)
+        tool = GlobTool()
+        self.assertTrue(tool.retryable)
+        self.assertTrue(tool.is_read_only)
+        self.assertEqual(tool.timeout_seconds, 30)
 
     def test_find_python_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "a.py").write_text("pass")
             (Path(tmpdir) / "b.txt").write_text("text")
-            result = self.tool.execute({"pattern": "*.py", "directory": tmpdir})
+            result = self.make_tool(tmpdir).execute({"pattern": "*.py", "directory": "."})
         self.assertFalse(result.is_error)
         self.assertIn("a.py", result.output)
         self.assertNotIn("b.txt", result.output)
 
+    def test_glob_rejects_absolute_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self.make_tool(tmpdir).execute({"pattern": "*.py", "directory": "/tmp"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
+
 
 class TestGrepTool(unittest.TestCase):
-    def setUp(self):
-        self.tool = GrepTool()
+    def make_tool(self, workspace_root: str) -> GrepTool:
+        return GrepTool(config=Config(workspace_root=workspace_root))
 
     def test_runtime_properties(self):
-        self.assertTrue(self.tool.retryable)
-        self.assertTrue(self.tool.is_read_only)
-        self.assertEqual(self.tool.timeout_seconds, 30)
+        tool = GrepTool()
+        self.assertTrue(tool.retryable)
+        self.assertTrue(tool.is_read_only)
+        self.assertEqual(tool.timeout_seconds, 30)
 
     def test_search_in_file(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("def hello():\n    return 'world'\n")
-            f.flush()
-            result = self.tool.execute({"pattern": "hello", "path": f.name})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.py"
+            path.write_text("def hello():\n    return 'world'\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({"pattern": "hello", "path": "sample.py"})
         self.assertFalse(result.is_error)
         self.assertIn("hello", result.output)
-        Path(f.name).unlink()
 
     def test_no_matches(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("nothing here\n")
-            f.flush()
-            result = self.tool.execute({"pattern": "zzzzz", "path": f.name})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.py"
+            path.write_text("nothing here\n", encoding="utf-8")
+            result = self.make_tool(tmpdir).execute({"pattern": "zzzzz", "path": "sample.py"})
         self.assertIn("No matches", result.output)
-        Path(f.name).unlink()
+
+    def test_grep_rejects_parent_escape(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self.make_tool(tmpdir).execute({"pattern": "x", "path": "../outside.py"})
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "workspace_violation")
 
 
 if __name__ == "__main__":

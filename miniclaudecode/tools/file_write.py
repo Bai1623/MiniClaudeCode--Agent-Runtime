@@ -5,14 +5,18 @@ Distilled from Claude Code's FileWriteTool: simplified to a plain write operatio
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
+
+from miniclaudecode.workspace import WorkspacePolicy
 
 from .base import Tool, ToolResult
 from .diff_utils import render_unified_diff
 
 
 class FileWriteTool(Tool):
+    def __init__(self, config: Any | None = None) -> None:
+        self.workspace = WorkspacePolicy.from_config(config)
+
     @property
     def name(self) -> str:
         return "write_file"
@@ -26,14 +30,17 @@ class FileWriteTool(Tool):
         return {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Absolute or relative path to the file."},
+                "path": {"type": "string", "description": "Workspace-relative path to the file."},
                 "content": {"type": "string", "description": "The content to write."},
             },
             "required": ["path", "content"],
         }
 
     def preview(self, params: dict[str, Any]) -> ToolResult:
-        filepath = Path(params["path"]).expanduser()
+        try:
+            filepath = self.workspace.resolve_path(params["path"])
+        except ValueError as exc:
+            return ToolResult(output=str(exc), is_error=True, error_type="workspace_violation")
         content = params.get("content", "")
         try:
             old_content = filepath.read_text(errors="replace") if filepath.exists() else ""
@@ -42,7 +49,10 @@ class FileWriteTool(Tool):
         return ToolResult(output=render_unified_diff(filepath, old_content, content))
 
     def execute(self, params: dict[str, Any]) -> ToolResult:
-        filepath = Path(params["path"]).expanduser()
+        try:
+            filepath = self.workspace.resolve_path(params["path"])
+        except ValueError as exc:
+            return ToolResult(output=str(exc), is_error=True, error_type="workspace_violation")
         content = params.get("content", "")
         preview = self.preview(params)
         if preview.is_error:

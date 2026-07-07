@@ -34,6 +34,7 @@ class ToolRuntimeConfig:
 
 @dataclass
 class SafetyConfig:
+    workspace_root: str = "."
     permission_mode: PermissionMode = PermissionMode.ASK
     allowed_commands: list[str] = field(default_factory=lambda: [
         "ls", "cat", "head", "tail", "wc", "find", "grep", "rg",
@@ -77,6 +78,7 @@ class Config:
         enabled_tools: list[str] | None = None,
         disabled_tools: list[str] | None = None,
         permission_mode: PermissionMode | str | None = None,
+        workspace_root: str | None = None,
         allowed_commands: list[str] | None = None,
         denied_patterns: list[str] | None = None,
         harness_runs_dir: str | None = None,
@@ -109,6 +111,8 @@ class Config:
             self.tool_runtime.disabled_tools = list(disabled_tools)
         if permission_mode is not None:
             self.safety.permission_mode = _parse_permission_mode(permission_mode)
+        if workspace_root is not None:
+            self.safety.workspace_root = workspace_root
         if allowed_commands is not None:
             self.safety.allowed_commands = list(allowed_commands)
         if denied_patterns is not None:
@@ -173,6 +177,14 @@ class Config:
     @permission_mode.setter
     def permission_mode(self, value: PermissionMode | str) -> None:
         self.safety.permission_mode = _parse_permission_mode(value)
+
+    @property
+    def workspace_root(self) -> str:
+        return self.safety.workspace_root
+
+    @workspace_root.setter
+    def workspace_root(self, value: str) -> None:
+        self.safety.workspace_root = value
 
     @property
     def allowed_commands(self) -> list[str]:
@@ -246,6 +258,7 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         "MINICLAUDECODE_TOOL_RESULT_HEAD_CHARS": "tool_runtime.tool_result_head_chars",
         "MINICLAUDECODE_TOOL_RESULT_TAIL_CHARS": "tool_runtime.tool_result_tail_chars",
         "MINICLAUDECODE_PERMISSION_MODE": "safety.permission_mode",
+        "MINICLAUDECODE_WORKSPACE_ROOT": "safety.workspace_root",
         "MINICLAUDECODE_HARNESS_RUNS_DIR": "harness.runs_dir",
         "MINICLAUDECODE_MAX_REPAIR_ROUNDS": "harness.max_repair_rounds",
     }
@@ -297,6 +310,8 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.tool_runtime.disabled_tools = _parse_string_list(key, value)
     elif key in {"permission_mode", "safety.permission_mode"}:
         config.safety.permission_mode = _parse_permission_mode(value)
+    elif key in {"workspace_root", "safety.workspace_root"}:
+        config.safety.workspace_root = str(value)
     elif key in {"allowed_commands", "safety.allowed_commands"}:
         config.safety.allowed_commands = _parse_string_list(key, value)
     elif key in {"denied_patterns", "safety.denied_patterns"}:

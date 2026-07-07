@@ -13,11 +13,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from miniclaudecode.workspace import WorkspacePolicy
+
 from .base import Tool, ToolResult
 from .diff_utils import render_unified_diff
 
 
 class FileEditTool(Tool):
+    def __init__(self, config: Any | None = None) -> None:
+        self.workspace = WorkspacePolicy.from_config(config)
+
     @property
     def name(self) -> str:
         return "edit_file"
@@ -34,7 +39,7 @@ class FileEditTool(Tool):
         return {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path to the file to edit."},
+                "path": {"type": "string", "description": "Workspace-relative path to the file to edit."},
                 "old_string": {"type": "string", "description": "Exact text to find (must be unique in the file)."},
                 "new_string": {"type": "string", "description": "Text to replace it with."},
             },
@@ -42,7 +47,10 @@ class FileEditTool(Tool):
         }
 
     def _build_new_content(self, params: dict[str, Any]) -> tuple[Path, str, str] | ToolResult:
-        filepath = Path(params["path"]).expanduser()
+        try:
+            filepath = self.workspace.resolve_path(params["path"])
+        except ValueError as exc:
+            return ToolResult(output=str(exc), is_error=True, error_type="workspace_violation")
         old_string = params.get("old_string", "")
         new_string = params.get("new_string", "")
 

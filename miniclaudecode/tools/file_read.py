@@ -10,8 +10,9 @@ Mini version: plain text read with line numbers and size limit.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
+
+from miniclaudecode.workspace import WorkspacePolicy
 
 from .base import Tool, ToolResult
 
@@ -19,6 +20,9 @@ MAX_FILE_SIZE = 2 * 1024 * 1024  # 2 MB
 
 
 class FileReadTool(Tool):
+    def __init__(self, config: Any | None = None) -> None:
+        self.workspace = WorkspacePolicy.from_config(config)
+
     @property
     def name(self) -> str:
         return "read_file"
@@ -32,7 +36,7 @@ class FileReadTool(Tool):
         return {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Absolute or relative path to the file."},
+                "path": {"type": "string", "description": "Workspace-relative path to the file."},
                 "offset": {"type": "integer", "description": "1-based start line (optional)."},
                 "limit": {"type": "integer", "description": "Number of lines to read (optional)."},
             },
@@ -48,7 +52,10 @@ class FileReadTool(Tool):
         return True
 
     def execute(self, params: dict[str, Any]) -> ToolResult:
-        filepath = Path(params["path"]).expanduser()
+        try:
+            filepath = self.workspace.resolve_path(params["path"])
+        except ValueError as exc:
+            return ToolResult(output=str(exc), is_error=True, error_type="workspace_violation")
         if not filepath.exists():
             return ToolResult(output=f"Error: file not found: {filepath}", is_error=True)
         if not filepath.is_file():

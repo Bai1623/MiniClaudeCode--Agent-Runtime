@@ -27,6 +27,7 @@ class TestConfigDefaults(unittest.TestCase):
         self.assertIsInstance(config.safety, SafetyConfig)
         self.assertIsInstance(config.harness, HarnessConfig)
         self.assertEqual(config.model.model, "claude-sonnet-4-20250514")
+        self.assertEqual(config.safety.workspace_root, ".")
         self.assertEqual(config.safety.permission_mode, PermissionMode.ASK)
 
     def test_legacy_constructor_arguments_still_work(self):
@@ -37,6 +38,7 @@ class TestConfigDefaults(unittest.TestCase):
             max_tool_result_chars=42,
             enabled_tools=["read_file"],
             disabled_tools=["bash"],
+            workspace_root="workspace",
             harness_runs_dir="runs",
             max_repair_rounds=3,
         )
@@ -47,6 +49,8 @@ class TestConfigDefaults(unittest.TestCase):
         self.assertEqual(config.tool_runtime.max_tool_result_chars, 42)
         self.assertEqual(config.tool_runtime.enabled_tools, ["read_file"])
         self.assertEqual(config.tool_runtime.disabled_tools, ["bash"])
+        self.assertEqual(config.workspace_root, "workspace")
+        self.assertEqual(config.safety.workspace_root, "workspace")
         self.assertEqual(config.harness.runs_dir, "runs")
         self.assertEqual(config.harness.max_repair_rounds, 3)
 
@@ -54,10 +58,12 @@ class TestConfigDefaults(unittest.TestCase):
         config = Config()
 
         config.permission_mode = "plan"
+        config.workspace_root = "src"
         config.max_turns = 9
         config.allowed_commands = ["git status"]
 
         self.assertEqual(config.safety.permission_mode, PermissionMode.PLAN)
+        self.assertEqual(config.safety.workspace_root, "src")
         self.assertEqual(config.model.max_turns, 9)
         self.assertEqual(config.safety.allowed_commands, ["git status"])
 
@@ -77,6 +83,7 @@ class TestLoadConfig(unittest.TestCase):
                         "enabled_tools": ["read_file", "grep"],
                     },
                     "safety": {
+                        "workspace_root": "repo",
                         "permission_mode": "plan",
                         "allowed_commands": ["git status"],
                     },
@@ -94,6 +101,7 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.model.max_turns, 11)
         self.assertEqual(config.tool_runtime.max_tool_result_chars, 100)
         self.assertEqual(config.tool_runtime.enabled_tools, ["read_file", "grep"])
+        self.assertEqual(config.safety.workspace_root, "repo")
         self.assertEqual(config.safety.permission_mode, PermissionMode.PLAN)
         self.assertEqual(config.safety.allowed_commands, ["git status"])
         self.assertEqual(config.harness.runs_dir, "file-runs")
@@ -105,7 +113,7 @@ class TestLoadConfig(unittest.TestCase):
             path.write_text(
                 json.dumps({
                     "model": {"model": "file-model", "max_turns": 10},
-                    "safety": {"permission_mode": "plan"},
+                    "safety": {"workspace_root": "file-root", "permission_mode": "plan"},
                 }),
                 encoding="utf-8",
             )
@@ -115,16 +123,19 @@ class TestLoadConfig(unittest.TestCase):
                 env={
                     "MINICLAUDECODE_MODEL": "env-model",
                     "MINICLAUDECODE_PERMISSION_MODE": "ask",
+                    "MINICLAUDECODE_WORKSPACE_ROOT": "env-root",
                     "MINICLAUDECODE_MAX_REPAIR_ROUNDS": "4",
                 },
                 cli_overrides={
                     "model.model": "cli-model",
                     "model.max_turns": 3,
+                    "safety.workspace_root": "cli-root",
                 },
             )
 
         self.assertEqual(config.model.model, "cli-model")
         self.assertEqual(config.model.max_turns, 3)
+        self.assertEqual(config.safety.workspace_root, "cli-root")
         self.assertEqual(config.safety.permission_mode, PermissionMode.ASK)
         self.assertEqual(config.harness.max_repair_rounds, 4)
 

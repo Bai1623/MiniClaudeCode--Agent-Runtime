@@ -11,12 +11,17 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from miniclaudecode.workspace import WorkspacePolicy
+
 from .base import Tool, ToolResult
 
 MAX_MATCHES = 200
 
 
 class GrepTool(Tool):
+    def __init__(self, config: Any | None = None) -> None:
+        self.workspace = WorkspacePolicy.from_config(config)
+
     @property
     def name(self) -> str:
         return "grep"
@@ -31,8 +36,8 @@ class GrepTool(Tool):
             "type": "object",
             "properties": {
                 "pattern": {"type": "string", "description": "Regex pattern to search for."},
-                "path": {"type": "string", "description": "File or directory to search (default: '.')."},
-                "include": {"type": "string", "description": "Glob to filter files (e.g. '*.py')."},
+                "path": {"type": "string", "description": "Workspace-relative file or directory to search."},
+                "include": {"type": "string", "description": "Workspace-relative glob to filter files (e.g. '*.py')."},
             },
             "required": ["pattern"],
         }
@@ -47,8 +52,15 @@ class GrepTool(Tool):
 
     def execute(self, params: dict[str, Any]) -> ToolResult:
         pattern = params["pattern"]
-        search_path = Path(params.get("path", ".")).expanduser().resolve()
+        try:
+            search_path = self.workspace.resolve_path(params.get("path", "."))
+        except ValueError as exc:
+            return ToolResult(output=str(exc), is_error=True, error_type="workspace_violation")
         include = params.get("include")
+        if include:
+            include_denial = self.workspace.validate_glob_pattern(include)
+            if include_denial is not None:
+                return ToolResult(output=include_denial, is_error=True, error_type="workspace_violation")
 
         if shutil.which("rg"):
             return self._rg_search(pattern, search_path, include)

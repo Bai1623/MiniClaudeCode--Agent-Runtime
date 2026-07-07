@@ -242,6 +242,7 @@ Claude 返回文本或 tool_use
     "disabled_tools": []
   },
   "safety": {
+    "workspace_root": ".",
     "permission_mode": "ask",
     "allowed_commands": ["ls", "cat", "git status", "git diff", "python3"],
     "denied_patterns": ["rm -rf /", "git reset --hard", "git push --force"]
@@ -262,6 +263,7 @@ Claude 返回文本或 tool_use
 | tool_runtime.max_tool_result_chars | 12000 | 返回给模型的工具结果上限 |
 | tool_runtime.enabled_tools | [] | 非空时只启用列出的工具 |
 | tool_runtime.disabled_tools | [] | 禁用列出的工具 |
+| safety.workspace_root | . | 工具和 bash 允许访问的 workspace 根目录 |
 | safety.permission_mode | ask | 默认权限模式 |
 | safety.allowed_commands | 内置安全命令列表 | ask 模式下可自动执行的命令前缀 |
 | safety.denied_patterns | 内置危险模式列表 | 始终拒绝的 bash 命令片段 |
@@ -274,6 +276,7 @@ Claude 返回文本或 tool_use
 | --- | --- |
 | MINICLAUDECODE_MODEL | model.model |
 | MINICLAUDECODE_MAX_TURNS | model.max_turns |
+| MINICLAUDECODE_WORKSPACE_ROOT | safety.workspace_root |
 | MINICLAUDECODE_PERMISSION_MODE | safety.permission_mode |
 | MINICLAUDECODE_ALLOWED_COMMANDS | safety.allowed_commands，逗号分隔 |
 | MINICLAUDECODE_DENIED_PATTERNS | safety.denied_patterns，逗号分隔 |
@@ -283,6 +286,8 @@ Claude 返回文本或 tool_use
 | MINICLAUDECODE_MAX_REPAIR_ROUNDS | harness.max_repair_rounds |
 
 命令行参数会覆盖配置文件和环境变量，例如 `--model`、`--mode`、`--max-turns` 和 `--max-repair-rounds`。
+
+`safety.workspace_root` 是工具执行的路径安全边界。文件工具、glob、grep 会拒绝绝对路径、`~` 和 `..` 路径段；bash 命令固定在 workspace root 下执行，并拒绝引用绝对路径、home 路径和父目录路径。
 
 Harness 模式会把 AgentLoop 的 tool trace 写入当前 run 的 `traces/` 目录；`final_report.md` 会汇总 events、tool calls、evaluation checks、repair rounds、git diff 和 test result，方便复盘一次长任务运行。
 
