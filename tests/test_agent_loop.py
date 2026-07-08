@@ -17,7 +17,7 @@ if "anthropic" not in sys.modules:
 
 from miniclaudecode.agent_loop import AgentLoop
 from miniclaudecode.config import Config, PermissionMode
-from miniclaudecode.context import ConversationContext
+from miniclaudecode.context import SUMMARY_START, ConversationContext
 from miniclaudecode.permissions import PermissionGate
 from miniclaudecode.runtime.tool_runtime import ToolExecution
 from miniclaudecode.runtime.tracing import TraceRecorder
@@ -112,15 +112,35 @@ class TestConversationContext(unittest.TestCase):
         self.assertEqual(msgs[0]["role"], "user")
         self.assertEqual(msgs[1]["role"], "assistant")
 
-    def test_truncation(self):
+    def test_compaction_summarizes_old_messages(self):
         config = Config(max_context_messages=5)
         ctx = ConversationContext(config=config)
         for i in range(10):
             ctx.add_user_message(f"msg {i}")
         msgs = ctx.get_api_messages()
         self.assertLessEqual(len(msgs), 5)
-        # First message should be preserved
         self.assertEqual(msgs[0]["content"], "msg 0")
+        self.assertIn(SUMMARY_START, msgs[1]["content"])
+        self.assertIn("msg 1", msgs[1]["content"])
+        self.assertIn("msg 6", msgs[1]["content"])
+        self.assertEqual([msg["content"] for msg in msgs[-3:]], ["msg 7", "msg 8", "msg 9"])
+
+    def test_repeated_compaction_keeps_single_summary_block(self):
+        config = Config(max_context_messages=5)
+        ctx = ConversationContext(config=config)
+        for i in range(14):
+            ctx.add_user_message(f"msg {i}")
+
+        msgs = ctx.get_api_messages()
+
+        summaries = [
+            msg for msg in msgs
+            if isinstance(msg["content"], str) and SUMMARY_START in msg["content"]
+        ]
+        self.assertEqual(len(summaries), 1)
+        self.assertLessEqual(len(msgs), 5)
+        self.assertIn("msg 10", summaries[0]["content"])
+        self.assertEqual([msg["content"] for msg in msgs[-3:]], ["msg 11", "msg 12", "msg 13"])
 
     def test_system_prompt(self):
         ctx = ConversationContext(config=Config())

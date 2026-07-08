@@ -9,7 +9,7 @@ Original system includes:
 
 Mini version:
   - In-memory message list
-  - Simple truncation (drop oldest messages when over limit)
+  - Deterministic compaction (summarize old messages when over limit)
   - CLAUDE.md loading from project root
 """
 
@@ -20,6 +20,10 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config
+from .memory.summarizer import Summarizer
+
+SUMMARY_START = "<conversation_summary>"
+SUMMARY_END = "</conversation_summary>"
 
 
 @dataclass
@@ -35,6 +39,7 @@ class ConversationContext:
     config: Config
     messages: list[dict[str, Any]] = field(default_factory=list)
     _system_prompt: str = ""
+    _summarizer: Summarizer = field(default_factory=Summarizer)
 
     def set_system_prompt(self, prompt: str) -> None:
         self._system_prompt = prompt
@@ -45,11 +50,11 @@ class ConversationContext:
 
     def add_user_message(self, content: str) -> None:
         self.messages.append({"role": "user", "content": content})
-        self._truncate_if_needed()
+        self._compact_if_needed()
 
     def add_assistant_message(self, content: Any) -> None:
         self.messages.append({"role": "assistant", "content": content})
-        self._truncate_if_needed()
+        self._compact_if_needed()
 
     def add_tool_result(self, tool_use_id: str, content: str, is_error: bool = False) -> None:
         self.messages.append({
@@ -61,18 +66,33 @@ class ConversationContext:
                 "is_error": is_error,
             }],
         })
-        self._truncate_if_needed()
+        self._compact_if_needed()
 
     def get_api_messages(self) -> list[dict[str, Any]]:
         return list(self.messages)
 
-    def _truncate_if_needed(self) -> None:
-        """Drop oldest messages when exceeding the limit, keeping the first user message."""
+    def _compact_if_needed(self) -> None:
+        """Compact old messages into a summary block when exceeding the limit."""
         max_msgs = self.config.max_context_messages
-        if len(self.messages) > max_msgs:
-            keep_first = self.messages[:1]
-            keep_recent = self.messages[-(max_msgs - 1):]
-            self.messages = keep_first + keep_recent
+        if len(self.messages) <= max_msgs:
+            return
+        if max_msgs < 3:
+            self.messages = self.messages[-max_msgs:]
+            return
+
+        keep_first = self.messages[:1]
+        recent_budget = max_msgs - 2
+        keep_recent = self.messages[-recent_budget:]
+        old_messages = self.messages[1:-recent_budget]
+        summary = self._summarizer.summarize_conversation(old_messages)
+        self.messages = keep_first + [_summary_message(summary)] + keep_recent
+
+
+def _summary_message(summary: str) -> dict[str, Any]:
+    return {
+        "role": "user",
+        "content": f"{SUMMARY_START}\n{summary}\n{SUMMARY_END}",
+    }
 
 
 def load_project_instructions(project_dir: str | Path | None = None) -> str:

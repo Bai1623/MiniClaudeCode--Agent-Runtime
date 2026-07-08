@@ -1,4 +1,4 @@
-"""Deterministic summaries for project files."""
+"""Deterministic summaries for project files and conversations."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ _MARKDOWN_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 
 
 class Summarizer:
-    """Builds compact, reusable file summaries without an LLM."""
+    """Builds compact, reusable summaries without an LLM."""
 
     def __init__(
         self,
@@ -95,6 +95,20 @@ class Summarizer:
             symbols=symbols,
             summary=_truncate(summary, self.max_summary_chars),
         )
+
+    def summarize_conversation(self, messages: list[dict[str, object]]) -> str:
+        """Summarize older conversation messages for context compaction."""
+        lines: list[str] = []
+        for index, message in enumerate(messages, start=1):
+            role = str(message.get("role", "unknown"))
+            content = _message_preview(message.get("content"))
+            if not content:
+                continue
+            lines.append(f"{index}. {role}: {content}")
+
+        if not lines:
+            return "No prior conversation details."
+        return _truncate("Earlier conversation: " + " | ".join(lines), self.max_summary_chars)
 
     def summarize_python(self, content: str) -> tuple[list[str], str]:
         try:
@@ -174,6 +188,43 @@ def _is_binary(content: bytes) -> bool:
 
 def _single_line(content: str) -> str:
     return " ".join(content.split())
+
+
+def _message_preview(content: object) -> str:
+    if isinstance(content, str):
+        return _single_line(_strip_summary_tags(content))
+    if isinstance(content, list):
+        parts = [_content_block_preview(block) for block in content]
+        return " ".join(part for part in parts if part)
+    return _single_line(str(content))
+
+
+def _content_block_preview(block: object) -> str:
+    if isinstance(block, str):
+        return _single_line(block)
+    if not isinstance(block, dict):
+        return _single_line(str(block))
+
+    block_type = str(block.get("type", "block"))
+    if block_type == "text":
+        return _single_line(str(block.get("text", "")))
+    if block_type == "tool_use":
+        name = str(block.get("name", "unknown"))
+        return f"tool_use {name} input={_single_line(str(block.get('input', {})))}"
+    if block_type == "tool_result":
+        tool_use_id = str(block.get("tool_use_id", "unknown"))
+        status = "error" if block.get("is_error") else "ok"
+        result = _single_line(str(block.get("content", "")))
+        return f"tool_result {tool_use_id} {status}: {result}"
+    return _single_line(str(block))
+
+
+def _strip_summary_tags(content: str) -> str:
+    return (
+        content
+        .replace("<conversation_summary>", "")
+        .replace("</conversation_summary>", "")
+    )
 
 
 def _truncate(content: str, max_chars: int) -> str:

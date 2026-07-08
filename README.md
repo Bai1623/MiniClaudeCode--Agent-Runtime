@@ -35,7 +35,7 @@ miniClaudeCode 是一个用于学习 Claude Code 核心架构的最小化 Python
 | 工具系统 | 内置 bash、read_file、write_file、edit_file、glob、grep 六个核心工具 |
 | 权限控制 | 提供 ask、auto、plan 三种权限模式 |
 | Diff 预览 | write_file 和 edit_file 在落盘前生成 unified diff，ask 模式需要确认后才应用 |
-| 上下文管理 | 使用内存消息列表保存对话，并在超过限制时截断旧消息 |
+| 上下文管理 | 使用内存消息列表保存对话，并在超过限制时将旧消息压缩为摘要块 |
 | 项目指令 | 启动时会读取当前目录下的 CLAUDE.md 作为项目级指令 |
 | 命令行入口 | 支持交互式 REPL，也支持一次性 prompt 调用 |
 

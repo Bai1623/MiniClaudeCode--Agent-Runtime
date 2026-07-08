@@ -80,6 +80,44 @@ class TestSummarizer(unittest.TestCase):
             self.assertEqual(summary.symbols, [])
             self.assertIn("anthropic>=0.42.0 | jsonschema>=4.0.0", summary.summary)
 
+    def test_conversation_summary_includes_roles_text_and_tool_blocks(self):
+        summary = Summarizer().summarize_conversation([
+            {"role": "user", "content": "Need workspace safety."},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "I will inspect the tools."},
+                    {"type": "tool_use", "name": "read_file", "input": {"path": "context.py"}},
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "context uses truncation",
+                    "is_error": False,
+                }],
+            },
+        ])
+
+        self.assertIn("Earlier conversation", summary)
+        self.assertIn("user: Need workspace safety.", summary)
+        self.assertIn("assistant: I will inspect the tools.", summary)
+        self.assertIn("tool_use read_file", summary)
+        self.assertIn("tool_result toolu_1 ok", summary)
+
+    def test_conversation_summary_strips_existing_summary_tags(self):
+        summary = Summarizer().summarize_conversation([
+            {
+                "role": "user",
+                "content": "<conversation_summary>\nold decision\n</conversation_summary>",
+            },
+        ])
+
+        self.assertIn("old decision", summary)
+        self.assertNotIn("<conversation_summary>", summary)
+
     def test_long_summary_is_truncated_to_configured_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "notes.txt"
