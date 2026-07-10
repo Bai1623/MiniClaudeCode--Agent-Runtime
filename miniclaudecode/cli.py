@@ -3,14 +3,16 @@
 Original: argparse with subcommands for summary, manifest, parity-audit, bootstrap,
 turn-loop, remote-mode, ssh-mode, etc., plus an Ink/React terminal UI.
 
-Mini version: simple interactive REPL with 3 commands: chat (default), tools, help.
+Mini version: product-oriented commands for chat, one-shot runs, tools, and doctor.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from .config import Config, PermissionMode, load_config
 from .harness.artifacts import ArtifactStore
@@ -38,9 +40,48 @@ BANNER = r"""
     /quit    -- exit
 """
 
+PRODUCT_COMMANDS = {"chat", "run", "tools", "doctor"}
+_N = TypeVar("_N")
+
+
+class MiniArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser that keeps legacy prompt mode while adding commands."""
+
+    @overload
+    def parse_args(
+        self,
+        args: Sequence[str] | None = ...,
+        namespace: None = ...,
+    ) -> argparse.Namespace:
+        ...
+
+    @overload
+    def parse_args(
+        self,
+        args: Sequence[str] | None,
+        namespace: _N,
+    ) -> _N:
+        ...
+
+    @overload
+    def parse_args(
+        self,
+        *,
+        namespace: _N,
+    ) -> _N:
+        ...
+
+    def parse_args(
+        self,
+        args: Sequence[str] | None = None,
+        namespace: Any = None,
+    ) -> Any:
+        parsed = super().parse_args(args, namespace)
+        return normalize_cli_args(parsed)
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = MiniArgumentParser(
         description="miniClaudeCode -- a distilled Claude Code agent loop",
     )
     parser.add_argument(
@@ -103,10 +144,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Max evaluator repair rounds in harness mode.",
     )
     parser.add_argument(
-        "prompt", nargs="?", default=None,
-        help="Optional one-shot prompt (non-interactive mode)",
+        "command_or_prompt",
+        nargs="?",
+        default=None,
+        help="Command (chat, run, tools, doctor) or legacy one-shot prompt.",
+    )
+    parser.add_argument(
+        "prompt_args",
+        nargs=argparse.REMAINDER,
+        help="Additional command arguments or prompt words.",
     )
     return parser
+
+
+def normalize_cli_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Normalize product commands while preserving legacy prompt behavior."""
+    command_or_prompt = args.command_or_prompt
+    rest = list(args.prompt_args or [])
+    if command_or_prompt in PRODUCT_COMMANDS:
+        args.command = command_or_prompt
+        args.command_args = rest
+        args.prompt = (" ".join(rest).strip() or None) if command_or_prompt == "run" else None
+    else:
+        prompt_parts = [part for part in [command_or_prompt, *rest] if part]
+        args.command = None
+        args.command_args = []
+        args.prompt = " ".join(prompt_parts).strip() or None
+    return args
 
 
 def run_interactive(agent: AgentLoop) -> None:
@@ -189,6 +253,36 @@ def list_harness_runs(store: ArtifactStore, output=sys.stdout) -> None:
     print("Harness runs:", file=output)
     for run in runs:
         print(f"  {run.run_id}  {run.root}", file=output)
+
+
+def list_tools(registry: ToolRegistry, output=sys.stdout) -> int:
+    tools = registry.all_tools()
+    if not tools:
+        print("No tools registered.", file=output)
+        return 0
+
+    print("Available tools:", file=output)
+    for tool in tools:
+        print(f"  - {tool.name}: {tool.description}", file=output)
+    return 0
+
+
+def run_doctor(config: Config, registry: ToolRegistry | None = None, output=sys.stdout) -> int:
+    registry = registry or ToolRegistry.default(config=config)
+    workspace_root = config.workspace_root
+    has_api_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+    print("miniClaudeCode doctor", file=output)
+    print(f"  model: {config.model.model}", file=output)
+    print(f"  permission_mode: {config.permission_mode.value}", file=output)
+    print(f"  max_turns: {config.max_turns}", file=output)
+    print(f"  workspace_root: {workspace_root}", file=output)
+    print(f"  harness_runs_dir: {config.harness.runs_dir}", file=output)
+    print(f"  tools: {len(registry.all_tools())}", file=output)
+    print(f"  anthropic_api_key: {'set' if has_api_key else 'missing'}", file=output)
+    if not has_api_key:
+        print("  warning: set ANTHROPIC_API_KEY before running chat or run.", file=output)
+    return 0
 
 
 def default_harness_tasks(prompt: str, task_titles: list[str] | None) -> list[TaskSpec | dict[str, Any]]:
@@ -282,7 +376,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.git_commit_message:
         return run_git_commit_message(args)
 
+    if args.command == "tools":
+        return list_tools(ToolRegistry.default(config=config))
+
+    if args.command == "doctor":
+        return run_doctor(config)
+
     agent = build_agent(args, config=config)
+
+    if args.command == "run":
+        if not args.prompt:
+            print("Error: run requires a prompt.", file=sys.stderr)
+            return 2
+        try:
+            agent.run(args.prompt)
+            print()
+        except Exception as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     if args.prompt:
         try:
@@ -291,6 +403,10 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
+        return 0
+
+    if args.command == "chat":
+        run_interactive(agent)
         return 0
 
     run_interactive(agent)

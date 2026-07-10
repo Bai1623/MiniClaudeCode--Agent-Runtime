@@ -14,19 +14,44 @@ from miniclaudecode.cli import (
     build_parser,
     default_harness_tasks,
     list_harness_runs,
+    list_tools,
+    run_doctor,
     run_git_commit_message,
     run_git_summary,
     run_harness,
 )
-from miniclaudecode.config import PermissionMode
+from miniclaudecode.config import Config, PermissionMode
 from miniclaudecode.git_workflow.diff_summary import DiffSummary, FileChange
 from miniclaudecode.git_workflow.test_runner import TestRunResult
 from miniclaudecode.git_workflow.workflow import GitWorkflowReport
 from miniclaudecode.git_workflow.worktree import WorktreeStatus
 from miniclaudecode.harness.artifacts import ArtifactStore
+from miniclaudecode.tools.base import ToolRegistry
 
 
 class TestCliHarnessOptions(unittest.TestCase):
+    def test_parser_accepts_product_commands(self):
+        parser = build_parser()
+
+        self.assertEqual(parser.parse_args(["chat"]).command, "chat")
+
+        run_args = parser.parse_args(["run", "Build", "feature"])
+        self.assertEqual(run_args.command, "run")
+        self.assertEqual(run_args.prompt, "Build feature")
+
+        tools_args = parser.parse_args(["tools", "list"])
+        self.assertEqual(tools_args.command, "tools")
+        self.assertEqual(tools_args.command_args, ["list"])
+
+        doctor_args = parser.parse_args(["doctor"])
+        self.assertEqual(doctor_args.command, "doctor")
+
+    def test_parser_preserves_legacy_prompt_mode(self):
+        args = build_parser().parse_args(["Build feature"])
+
+        self.assertIsNone(args.command)
+        self.assertEqual(args.prompt, "Build feature")
+
     def test_parser_accepts_harness_options(self):
         parser = build_parser()
         args = parser.parse_args([
@@ -104,6 +129,28 @@ class TestCliHarnessOptions(unittest.TestCase):
 
         self.assertIn("Harness runs:", output.getvalue())
         self.assertIn(artifacts.run_id, output.getvalue())
+
+    def test_list_tools_outputs_registered_tools(self):
+        output = StringIO()
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        exit_code = list_tools(registry, output=output)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Available tools:", output.getvalue())
+        self.assertIn("read_file", output.getvalue())
+
+    def test_run_doctor_outputs_config_and_api_key_status(self):
+        output = StringIO()
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        with patch.dict("miniclaudecode.cli.os.environ", {}, clear=True):
+            exit_code = run_doctor(Config(model="doctor-model"), registry=registry, output=output)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("doctor-model", output.getvalue())
+        self.assertIn("tools: 1", output.getvalue())
+        self.assertIn("anthropic_api_key: missing", output.getvalue())
 
     def test_run_harness_requires_prompt(self):
         args = build_parser().parse_args(["--run-harness"])

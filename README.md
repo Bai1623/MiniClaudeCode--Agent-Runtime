@@ -119,13 +119,31 @@ export ANTHROPIC_API_KEY="你的 API Key"
 
 ## 使用方式
 
-启动交互式 REPL：
+启动交互式聊天：
 
 ```bash
-python -m miniclaudecode
+python -m miniclaudecode chat
 ```
 
 一次性执行一个 prompt：
+
+```bash
+python -m miniclaudecode run "帮我查看当前目录有哪些 Python 文件"
+```
+
+查看当前可用工具：
+
+```bash
+python -m miniclaudecode tools
+```
+
+检查配置、工具和 API Key 状态：
+
+```bash
+python -m miniclaudecode doctor
+```
+
+兼容旧的 prompt 写法：
 
 ```bash
 python -m miniclaudecode "帮我查看当前目录有哪些 Python 文件"
@@ -134,7 +152,7 @@ python -m miniclaudecode "帮我查看当前目录有哪些 Python 文件"
 指定模型、权限模式和最大循环轮数：
 
 ```bash
-python -m miniclaudecode --model claude-sonnet-4-20250514 --mode ask --max-turns 30
+python -m miniclaudecode --model claude-sonnet-4-20250514 --mode ask --max-turns 30 chat
 ```
 
 指定配置文件：
