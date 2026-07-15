@@ -3,7 +3,7 @@ VENV ?= .venv
 BIN := $(VENV)/bin
 PY := $(BIN)/python
 
-.PHONY: install test coverage lint format typecheck build check clean
+.PHONY: install test e2e coverage lint format typecheck build check clean
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -12,6 +12,9 @@ install:
 
 test:
 	$(PY) -m unittest discover
+
+e2e:
+	$(PY) -m unittest tests.test_e2e_agent_task
 
 coverage:
 	$(PY) -m coverage run -m unittest discover

@@ -267,6 +267,64 @@ class TestToolRuntime(unittest.TestCase):
         self.assertTrue(execution.result.is_error)
         self.assertEqual(execution.result.error_type, "preview_rejected")
 
+    def test_preview_prompt_shows_target_and_diff_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = ToolRegistry()
+            registry.register(FileWriteTool(config=Config(workspace_root=tmpdir)))
+            output = StringIO()
+            runtime = self.make_runtime(
+                registry,
+                config=Config(permission_mode=PermissionMode.ASK, workspace_root=tmpdir),
+                confirm_callback=lambda _tool_name, _preview: True,
+                output=output,
+            )
+
+            execution = runtime.invoke(
+                {"id": "1", "name": "write_file", "input": {"path": "preview.txt", "content": "hello\n"}},
+                turn=1,
+                run_id="run",
+            )
+
+        self.assertFalse(execution.result.is_error)
+        rendered = output.getvalue()
+        self.assertIn("[Permission Request]", rendered)
+        self.assertIn("Tool: write_file", rendered)
+        self.assertIn("Target: preview.txt", rendered)
+        self.assertIn("Diff summary:", rendered)
+        self.assertIn("+1 -0", rendered)
+
+    def test_preview_permanent_allow_skips_future_prompt_for_same_target(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = ToolRegistry()
+            registry.register(FileWriteTool(config=Config(workspace_root=tmpdir)))
+            decisions = []
+
+            def confirm(_tool_name, _preview):
+                decisions.append("called")
+                return "always"
+
+            runtime = self.make_runtime(
+                registry,
+                config=Config(permission_mode=PermissionMode.ASK, workspace_root=tmpdir),
+                confirm_callback=confirm,
+                output=StringIO(),
+            )
+
+            first = runtime.invoke(
+                {"id": "1", "name": "write_file", "input": {"path": "preview.txt", "content": "one\n"}},
+                turn=1,
+                run_id="run",
+            )
+            second = runtime.invoke(
+                {"id": "2", "name": "write_file", "input": {"path": "preview.txt", "content": "two\n"}},
+                turn=2,
+                run_id="run",
+            )
+
+        self.assertFalse(first.result.is_error)
+        self.assertFalse(second.result.is_error)
+        self.assertEqual(decisions, ["called"])
+
     def test_timeout_error(self):
         registry = ToolRegistry()
         registry.register(SlowTool())

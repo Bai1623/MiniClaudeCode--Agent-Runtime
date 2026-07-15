@@ -31,6 +31,7 @@ class PermissionGate:
 
     def __init__(self, config: Config) -> None:
         self.config = config
+        self._permanent_allows: set[tuple[str, str]] = set()
 
     def check(self, tool: Tool, params: dict[str, Any]) -> ToolResult | None:
         """Run the permission gauntlet. Returns a ToolResult if denied, None if allowed."""
@@ -64,7 +65,14 @@ class PermissionGate:
             if tool.name == "bash":
                 cmd = params.get("command", "")
                 if not self._is_safe_command(cmd):
-                    if not self._ask_user(tool.name, params):
+                    allow_key = _permission_key(tool.name, params)
+                    if allow_key in self._permanent_allows:
+                        return None
+                    decision = self._ask_user(tool.name, params)
+                    if decision == "always":
+                        self._permanent_allows.add(allow_key)
+                        return None
+                    if decision != "once":
                         return ToolResult(output="Permission denied: user rejected.", is_error=True)
 
         # AUTO mode: allow everything that passed layer 1
@@ -74,19 +82,59 @@ class PermissionGate:
         cmd_lower = command.strip().lower()
         return any(cmd_lower.startswith(safe) for safe in self.config.allowed_commands)
 
-    @staticmethod
-    def _ask_user(tool_name: str, params: dict[str, Any]) -> bool:
-        detail = ""
-        if tool_name == "bash":
-            detail = params.get("command", "")
-        elif tool_name in ("write_file", "edit_file"):
-            detail = params.get("path", "")
-        prompt = f"\n[Permission] Allow '{tool_name}'"
-        if detail:
-            prompt += f": {detail}"
-        prompt += "? [y/N] "
+    def _ask_user(self, tool_name: str, params: dict[str, Any]) -> str:
+        prompt = _format_permission_prompt(tool_name, params)
         try:
             answer = input(prompt).strip().lower()
-            return answer in ("y", "yes")
+            return _parse_permission_answer(answer)
         except (EOFError, KeyboardInterrupt):
-            return False
+            return "deny"
+
+
+def _permission_key(tool_name: str, params: dict[str, Any]) -> tuple[str, str]:
+    if tool_name == "bash":
+        return tool_name, str(params.get("command", "")).strip()
+    if tool_name in {"write_file", "edit_file"}:
+        return tool_name, str(params.get("path", "")).strip()
+    return tool_name, repr(sorted(params.items()))
+
+
+def _format_permission_prompt(tool_name: str, params: dict[str, Any]) -> str:
+    lines = [
+        "",
+        "[Permission Request]",
+        f"Tool: {tool_name}",
+    ]
+    if tool_name == "bash":
+        command = str(params.get("command", ""))
+        lines.extend([
+            f"Command: {command}",
+            f"Risk: {_command_risk(command)}",
+            "Why: this command is not in the configured safe command allowlist.",
+        ])
+    elif tool_name in {"write_file", "edit_file"}:
+        lines.extend([
+            f"Target: {params.get('path', '(unknown)')}",
+            "Why: this tool can change files in the workspace.",
+        ])
+    else:
+        lines.append("Why: this tool needs explicit permission in ask mode.")
+    lines.append("Choose: [o]nce / [a]lways / [d]eny > ")
+    return "\n".join(lines)
+
+
+def _command_risk(command: str) -> str:
+    lowered = command.lower()
+    if any(token in lowered for token in ("rm ", "delete", "drop ", "reset", "clean")):
+        return "high - destructive command pattern."
+    if any(token in lowered for token in ("curl", "wget", "ssh", "scp", "chmod", "chown")):
+        return "medium - external access or permission-changing command."
+    return "medium - command is outside the safe allowlist."
+
+
+def _parse_permission_answer(answer: str) -> str:
+    if answer in {"o", "once", "y", "yes"}:
+        return "once"
+    if answer in {"a", "always", "permanent", "p"}:
+        return "always"
+    return "deny"

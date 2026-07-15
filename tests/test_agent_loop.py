@@ -11,6 +11,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from types import SimpleNamespace
+from unittest.mock import patch
 
 if "anthropic" not in sys.modules:
     sys.modules["anthropic"] = SimpleNamespace(Anthropic=lambda: None)
@@ -99,6 +100,24 @@ class TestPermissionGate(unittest.TestCase):
         result = gate.check(tool, {"command": "rm -rf /"})
         self.assertIsNotNone(result)
         self.assertTrue(result.is_error)
+
+    def test_ask_mode_can_permanently_allow_risky_bash_command(self):
+        config = Config(permission_mode=PermissionMode.ASK)
+        gate = PermissionGate(config)
+        tool = BashTool(config=config)
+
+        with patch("builtins.input", return_value="a") as prompt:
+            first = gate.check(tool, {"command": "pytest tests"})
+            second = gate.check(tool, {"command": "pytest tests"})
+
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertEqual(prompt.call_count, 1)
+        prompt_text = prompt.call_args.args[0]
+        self.assertIn("Tool: bash", prompt_text)
+        self.assertIn("Command: pytest tests", prompt_text)
+        self.assertIn("Risk:", prompt_text)
+        self.assertIn("[o]nce / [a]lways / [d]eny", prompt_text)
 
 
 class TestConversationContext(unittest.TestCase):

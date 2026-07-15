@@ -6,7 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, TextIO
+from typing import Callable, TextIO, Union
 
 from miniclaudecode.config import Config, PermissionMode
 from miniclaudecode.permissions import PermissionGate
@@ -32,20 +32,20 @@ class ToolExecution:
         }
 
 
-ConfirmCallback = Callable[[str, ToolResult], bool]
+ConfirmCallback = Callable[[str, ToolResult], Union[bool, str]]
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _default_confirm_callback(tool_name: str, preview: ToolResult) -> bool:
-    prompt = f"\n[Permission] Apply diff for '{tool_name}'? [y/N] "
+def _default_confirm_callback(tool_name: str, preview: ToolResult) -> str:
+    prompt = _format_preview_prompt(tool_name, preview)
     try:
         answer = input(prompt).strip().lower()
-        return answer in ("y", "yes")
+        return _parse_permission_answer(answer)
     except (EOFError, KeyboardInterrupt):
-        return False
+        return "deny"
 
 
 class ToolRuntime:
@@ -67,6 +67,7 @@ class ToolRuntime:
         self.tracer = tracer or TraceRecorder(enabled=False)
         self.confirm_callback = confirm_callback or _default_confirm_callback
         self.output = output or sys.stdout
+        self._permanent_preview_allows: set[tuple[str, str]] = set()
 
     def invoke(self, call: dict, turn: int, run_id: str) -> ToolExecution:
         started_at = _utc_now()
@@ -117,14 +118,24 @@ class ToolRuntime:
         if preview.is_error:
             return self._ensure_error_type(preview, "execution_error")
 
-        self.output.write("\n[Diff Preview]\n")
+        target = _target_from_params(tool.name, params)
+        allow_key = (tool.name, target)
+        preview = _with_preview_metadata(tool.name, target, preview)
+        self.output.write(_format_preview_summary(tool.name, preview))
+        self.output.write("\n[Diff]\n")
         self.output.write(preview.output)
         if not preview.output.endswith("\n"):
             self.output.write("\n")
         self.output.flush()
 
         if self.config.permission_mode == PermissionMode.ASK:
-            if not self.confirm_callback(tool.name, preview):
+            if allow_key in self._permanent_preview_allows:
+                return None
+            decision = _normalize_permission_decision(self.confirm_callback(tool.name, preview))
+            if decision == "always":
+                self._permanent_preview_allows.add(allow_key)
+                return None
+            if decision != "once":
                 return ToolResult(
                     output="Permission denied: user rejected diff preview.",
                     is_error=True,
@@ -206,3 +217,77 @@ class ToolRuntime:
             ended_at=ended_at,
         )
         return ToolExecution(tool_use_id=tool_call_id, result=compressed)
+
+
+def _target_from_params(tool_name: str, params: dict) -> str:
+    if tool_name in {"write_file", "edit_file"}:
+        return str(params.get("path", "(unknown)"))
+    if tool_name == "bash":
+        return str(params.get("command", "(unknown)"))
+    return repr(sorted(params.items()))
+
+
+def _with_preview_metadata(tool_name: str, target: str, preview: ToolResult) -> ToolResult:
+    metadata = dict(preview.metadata)
+    metadata["tool_name"] = tool_name
+    metadata["target"] = target
+    metadata["diff_summary"] = _summarize_diff(preview.output)
+    return ToolResult(
+        output=preview.output,
+        is_error=preview.is_error,
+        error_type=preview.error_type,
+        metadata=metadata,
+    )
+
+
+def _format_preview_summary(tool_name: str, preview: ToolResult) -> str:
+    target = preview.metadata.get("target", "(unknown)")
+    diff_summary = preview.metadata.get("diff_summary", "diff summary unavailable")
+    return (
+        "\n[Permission Request]\n"
+        f"Tool: {tool_name}\n"
+        f"Target: {target}\n"
+        "Why: this tool will modify workspace files.\n"
+        f"Diff summary: {diff_summary}\n"
+    )
+
+
+def _format_preview_prompt(tool_name: str, preview: ToolResult) -> str:
+    target = preview.metadata.get("target", "(unknown)")
+    diff_summary = preview.metadata.get("diff_summary", "diff summary unavailable")
+    return (
+        "\n[Permission Decision]\n"
+        f"Tool: {tool_name}\n"
+        f"Target: {target}\n"
+        f"Diff summary: {diff_summary}\n"
+        "Choose: [o]nce / [a]lways / [d]eny > "
+    )
+
+
+def _summarize_diff(diff: str) -> str:
+    additions = 0
+    deletions = 0
+    files: list[str] = []
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            files.append(line[6:])
+        elif line.startswith("+") and not line.startswith("+++"):
+            additions += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            deletions += 1
+    file_text = ", ".join(files) if files else "unknown file"
+    return f"{file_text}; +{additions} -{deletions}"
+
+
+def _parse_permission_answer(answer: str) -> str:
+    if answer in {"o", "once", "y", "yes"}:
+        return "once"
+    if answer in {"a", "always", "permanent", "p"}:
+        return "always"
+    return "deny"
+
+
+def _normalize_permission_decision(decision: bool | str) -> str:
+    if isinstance(decision, bool):
+        return "once" if decision else "deny"
+    return _parse_permission_answer(decision.strip().lower())

@@ -181,6 +181,14 @@ python -m miniclaudecode --config miniclaudecode.config.json "查看项目状态
 | auto | 自动执行通过工具自检的操作，适合受控环境下快速实验 |
 | plan | 只读模式。bash、write_file、edit_file 会被阻止 |
 
+ask 模式的交互式确认会展示工具名、目标路径或命令、风险说明和 diff 摘要。用户可以选择：
+
+```text
+o / once    允许本次执行
+a / always  对同一命令或同一工具目标永久允许
+d / deny    拒绝执行
+```
+
 权限检查分为两层：
 
 1. 工具自检。比如 BashTool 会阻止 rm -rf /、git reset --hard、git push --force 等危险模式。
@@ -321,6 +329,7 @@ make install
 
 ```bash
 make test       # unittest
+make e2e        # fixture repo end-to-end agent task
 make coverage   # coverage run + threshold report
 make lint       # ruff check
 make format     # ruff auto-fix + format
@@ -345,8 +354,9 @@ make check      # lint + typecheck + coverage + build
 3. 文件读取、写入和精确替换。
 4. glob 和 grep 搜索。
 5. 权限模式行为。
-6. 上下文截断。
+6. 上下文摘要压缩。
 7. 系统提示词构建。
+8. 端到端真实任务：读取 fixture repo、修改文件、运行测试、生成报告，并拒绝危险命令。
 
 ## 与完整 Claude Code 的区别
 
@@ -356,7 +366,7 @@ make check      # lint + typecheck + coverage + build
 | API 调用 | 同步非流式 | 流式优先 |
 | 工具数量 | 6 个核心工具 | 更多内置工具和扩展能力 |
 | 权限系统 | 2 层简化模型 | 更完整的权限、沙箱、设置和钩子系统 |
-| 上下文 | 内存列表和简单截断 | 会话持久化、压缩、记忆和项目上下文 |
+| 上下文 | 内存列表和摘要压缩 | 会话持久化、压缩、记忆和项目上下文 |
 | UI | print/input REPL | 更完整的终端交互体验 |
 
 ## 开发建议
