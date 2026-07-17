@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from .config import Config, PermissionMode, load_config
+from .errors import ErrorPresenter
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
 from .harness.executor import Executor
@@ -42,6 +43,7 @@ BANNER = r"""
 
 PRODUCT_COMMANDS = {"chat", "run", "tools", "doctor"}
 _N = TypeVar("_N")
+ERROR_PRESENTER = ErrorPresenter()
 
 
 class MiniArgumentParser(argparse.ArgumentParser):
@@ -219,7 +221,8 @@ def run_interactive(agent: AgentLoop) -> None:
         except KeyboardInterrupt:
             print("\n(interrupted)")
         except Exception as exc:
-            print(f"\nError: {exc}", file=sys.stderr)
+            print(file=sys.stderr)
+            ERROR_PRESENTER.print(exc, output=sys.stderr)
 
 
 def build_config(args: argparse.Namespace) -> Config:
@@ -314,14 +317,18 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
         evaluator=Evaluator(),
         max_repair_rounds=config.harness.max_repair_rounds,
     )
-    result = harness.run(
-        request=args.prompt,
-        goal=args.prompt,
-        spec=args.harness_spec or "",
-        tasks=default_harness_tasks(args.prompt, args.harness_task),
-    )
-    git_report = build_git_workflow_report(args)
-    FinalReportGenerator().write(store, result, git_report=git_report)
+    try:
+        result = harness.run(
+            request=args.prompt,
+            goal=args.prompt,
+            spec=args.harness_spec or "",
+            tasks=default_harness_tasks(args.prompt, args.harness_task),
+        )
+        git_report = build_git_workflow_report(args)
+        FinalReportGenerator().write(store, result, git_report=git_report)
+    except Exception as exc:
+        ERROR_PRESENTER.print(exc, output=sys.stderr)
+        return 1
 
     print(f"Harness run: {result.artifacts.run_id}")
     print(f"Status: {result.status}")
@@ -340,7 +347,7 @@ def run_git_summary(args: argparse.Namespace, output=sys.stdout) -> int:
     try:
         report = build_git_workflow_report(args)
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        ERROR_PRESENTER.print(exc, output=sys.stderr)
         return 1
 
     print(report.to_markdown(), file=output)
@@ -351,14 +358,14 @@ def run_git_commit_message(args: argparse.Namespace, output=sys.stdout) -> int:
     try:
         report = build_git_workflow_report(args)
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        ERROR_PRESENTER.print(exc, output=sys.stderr)
         return 1
 
     print(report.commit_message, file=output)
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     config = build_config(args)
@@ -392,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
             agent.run(args.prompt)
             print()
         except Exception as exc:
-            print(f"Error: {exc}", file=sys.stderr)
+            ERROR_PRESENTER.print(exc, output=sys.stderr)
             return 1
         return 0
 
@@ -401,7 +408,7 @@ def main(argv: list[str] | None = None) -> int:
             agent.run(args.prompt)
             print()
         except Exception as exc:
-            print(f"Error: {exc}", file=sys.stderr)
+            ERROR_PRESENTER.print(exc, output=sys.stderr)
             return 1
         return 0
 
@@ -411,6 +418,19 @@ def main(argv: list[str] | None = None) -> int:
 
     run_interactive(agent)
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except KeyboardInterrupt:
+        print("\n(interrupted)", file=sys.stderr)
+        return 130
+    except SystemExit:
+        raise
+    except Exception as exc:
+        ERROR_PRESENTER.print(exc, output=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from miniclaudecode.cli import (
     default_harness_tasks,
     list_harness_runs,
     list_tools,
+    main,
     run_doctor,
     run_git_commit_message,
     run_git_summary,
@@ -151,6 +152,19 @@ class TestCliHarnessOptions(unittest.TestCase):
         self.assertIn("doctor-model", output.getvalue())
         self.assertIn("tools: 1", output.getvalue())
         self.assertIn("anthropic_api_key: missing", output.getvalue())
+
+    def test_main_presents_agent_creation_error(self):
+        stderr = StringIO()
+
+        with (
+            patch("miniclaudecode.cli.build_agent", side_effect=ValueError("api_key missing")),
+            redirect_stderr(stderr),
+        ):
+            exit_code = main(["run", "hello"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Anthropic API key is missing", stderr.getvalue())
+        self.assertIn("How to fix:", stderr.getvalue())
 
     def test_run_harness_requires_prompt(self):
         args = build_parser().parse_args(["--run-harness"])
