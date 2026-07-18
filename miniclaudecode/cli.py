@@ -12,6 +12,8 @@ import argparse
 import os
 import sys
 from collections.abc import Sequence
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from .config import Config, PermissionMode, load_config
@@ -22,6 +24,7 @@ from .harness.executor import Executor
 from .harness.planner import Planner, TaskSpec
 from .harness.report import FinalReportGenerator
 from .harness.task_harness import TaskHarness
+from .memory import ContextBuilder, MemoryStore, ProjectIndex, ProjectSummary, Summarizer
 from .tools.base import ToolRegistry
 
 if TYPE_CHECKING:
@@ -127,6 +130,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-git-tests",
         action="store_true",
         help="Skip tests when generating git workflow summaries.",
+    )
+    parser.add_argument(
+        "--memory-index",
+        action="store_true",
+        help="Refresh project memory summaries and exit.",
+    )
+    parser.add_argument(
+        "--memory-context",
+        metavar="TASK",
+        help="Build task-specific memory context, write it to memory, and print it.",
+    )
+    parser.add_argument(
+        "--list-memory",
+        action="store_true",
+        help="List saved memory records and exit.",
     )
     parser.add_argument(
         "--harness-task",
@@ -316,6 +334,7 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
         executor=Executor(agent),
         evaluator=Evaluator(),
         max_repair_rounds=config.harness.max_repair_rounds,
+        memory_store=MemoryStore(),
     )
     try:
         result = harness.run(
@@ -334,6 +353,8 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
     print(f"Status: {result.status}")
     print(f"Artifacts: {result.artifacts.root}")
     print(f"Final report: {result.artifacts.final_report_path}")
+    if result.memory_path is not None:
+        print(f"Memory: {result.memory_path}")
     return 0 if result.status == "passed" else 1
 
 
@@ -351,6 +372,8 @@ def run_git_summary(args: argparse.Namespace, output=sys.stdout) -> int:
         return 1
 
     print(report.to_markdown(), file=output)
+    memory_path = write_git_workflow_memory(report)
+    print(f"\nMemory: {memory_path}", file=output)
     return 0
 
 
@@ -363,6 +386,99 @@ def run_git_commit_message(args: argparse.Namespace, output=sys.stdout) -> int:
 
     print(report.commit_message, file=output)
     return 0
+
+
+def run_memory_index(args: argparse.Namespace, output=sys.stdout) -> int:
+    store = MemoryStore()
+    index = ProjectIndex(".")
+    summarizer = Summarizer(".")
+
+    try:
+        fingerprints = index.scan()
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    refreshed = 0
+    for fingerprint in fingerprints:
+        existing = store.read_file_summary(fingerprint.path)
+        if existing is not None and not index.is_summary_stale(existing):
+            continue
+        store.write_file_summary(summarizer.summarize_file(fingerprint.path, fingerprint))
+        refreshed += 1
+
+    project_summary = build_project_summary(fingerprints, Path.cwd())
+    store.write_project_summary(project_summary)
+
+    print(f"Memory index refreshed: {refreshed}/{len(fingerprints)} files", file=output)
+    print(f"Project summary: {store.project_path}", file=output)
+    print(f"File summaries: {store.files_dir}", file=output)
+    return 0
+
+
+def run_memory_context(args: argparse.Namespace, output=sys.stdout) -> int:
+    store = MemoryStore()
+    builder = ContextBuilder(store)
+    bundle = builder.build(args.memory_context)
+    rendered = builder.render(bundle)
+    path = store.write_context("latest", rendered)
+
+    print(rendered, file=output)
+    print(f"Memory context: {path}", file=output)
+    return 0
+
+
+def list_memory_records(store: MemoryStore, output=sys.stdout) -> None:
+    project = store.read_project_summary()
+    files = store.list_file_summaries()
+    decisions = store.list_decisions()
+    tasks = store.list_task_memories()
+
+    print("Memory records:", file=output)
+    print(f"  Project summary: {'yes' if project is not None else 'no'}", file=output)
+    print(f"  File summaries: {len(files)}", file=output)
+    print(f"  Decisions: {len(decisions)}", file=output)
+    print(f"  Task memories: {len(tasks)}", file=output)
+    print(f"  Root: {store.base_dir}", file=output)
+
+
+def build_project_summary(fingerprints, project_root: Path) -> ProjectSummary:
+    paths = [Path(item.path) for item in fingerprints]
+    modules = sorted(
+        {
+            path.parts[0]
+            for path in paths
+            if path.parts and not path.name.startswith(".")
+        }
+    )
+    entrypoints = [
+        item
+        for item in ("miniclaudecode/__main__.py", "miniclaudecode/cli.py")
+        if any(fingerprint.path == item for fingerprint in fingerprints)
+    ]
+    test_commands = ["python -m unittest discover"] if any(
+        path.parts and path.parts[0] == "tests"
+        for path in paths
+    ) else []
+    capabilities = [
+        "Tool Runtime",
+        "Planner Executor Evaluator Harness",
+        "Git Workflow",
+        "Memory and Context Engineering",
+    ]
+    return ProjectSummary(
+        name=project_root.name,
+        updated_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        modules=modules,
+        capabilities=capabilities,
+        entrypoints=entrypoints,
+        test_commands=test_commands,
+    )
+
+
+def write_git_workflow_memory(report) -> Path:
+    store = MemoryStore()
+    return store.write_task_memory(report.to_task_memory())
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -382,6 +498,16 @@ def _main(argv: list[str] | None = None) -> int:
 
     if args.git_commit_message:
         return run_git_commit_message(args)
+
+    if args.memory_index:
+        return run_memory_index(args)
+
+    if args.memory_context:
+        return run_memory_context(args)
+
+    if args.list_memory:
+        list_memory_records(MemoryStore())
+        return 0
 
     if args.command == "tools":
         return list_tools(ToolRegistry.default(config=config))

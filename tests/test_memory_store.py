@@ -119,6 +119,15 @@ class TestMemoryStore(unittest.TestCase):
 
             self.assertEqual(store.list_task_memories(), [earlier, later])
 
+    def test_write_context_creates_markdown_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory")
+
+            path = store.write_context("latest", "# Context\n")
+
+            self.assertEqual(path, store.context_dir / "latest.md")
+            self.assertEqual(path.read_text(encoding="utf-8"), "# Context\n")
+
     def test_list_methods_return_empty_without_creating_directories(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base_dir = Path(tmpdir) / "memory"

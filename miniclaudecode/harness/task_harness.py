@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .artifacts import ArtifactStore, RunArtifacts
 from .evaluator import EvaluationReport, Evaluator
 from .executor import ExecutionResult, Executor
 from .planner import Plan, Planner, TaskSpec
+from miniclaudecode.memory.records import TaskMemory
+from miniclaudecode.memory.store import MemoryStore
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,7 @@ class HarnessRunResult:
     artifacts: RunArtifacts
     plan: Plan
     task_results: list[TaskRunResult] = field(default_factory=list)
+    memory_path: Path | None = None
 
     @property
     def status(self) -> str:
@@ -47,12 +51,14 @@ class TaskHarness:
         executor: Executor,
         evaluator: Evaluator,
         max_repair_rounds: int = 1,
+        memory_store: MemoryStore | None = None,
     ) -> None:
         self.store = store
         self.planner = planner
         self.executor = executor
         self.evaluator = evaluator
         self.max_repair_rounds = max(0, max_repair_rounds)
+        self.memory_store = memory_store
 
     def run(self, request: str, goal: str, tasks: list[TaskSpec | dict], spec: str = "") -> HarnessRunResult:
         artifacts = self.store.create_run()
@@ -71,7 +77,13 @@ class TaskHarness:
 
         status = "passed" if all(result.status == "passed" for result in task_results) else "failed"
         self.store.append_event(artifacts, {"type": "run_finished", "status": status})
-        return HarnessRunResult(artifacts=artifacts, plan=plan, task_results=task_results)
+        memory_path = self._write_task_memory(artifacts, plan, task_results, status)
+        return HarnessRunResult(
+            artifacts=artifacts,
+            plan=plan,
+            task_results=task_results,
+            memory_path=memory_path,
+        )
 
     def _run_task(self, artifacts: RunArtifacts, task: TaskSpec) -> TaskRunResult:
         executions: list[ExecutionResult] = []
@@ -105,3 +117,55 @@ class TaskHarness:
             if check.status != "passed"
         ]
         return "\n".join(failed) or "Evaluation failed without detailed feedback."
+
+    def _write_task_memory(
+        self,
+        artifacts: RunArtifacts,
+        plan: Plan,
+        task_results: list[TaskRunResult],
+        status: str,
+    ) -> Path | None:
+        if self.memory_store is None:
+            return None
+
+        changed_files = sorted(
+            {
+                str(artifacts.request_path),
+                str(artifacts.plan_path),
+                str(artifacts.final_report_path),
+                *[
+                    str(artifacts.evaluator_reports_dir / f"{result.task.id}.json")
+                    for result in task_results
+                ],
+            }
+        )
+        tests = sorted(
+            {
+                check.name
+                for result in task_results
+                for evaluation in result.evaluations
+                for check in evaluation.checks
+                if check.status == "passed"
+            }
+        )
+        summary = "; ".join(
+            f"{result.task.id} {result.status}: {result.task.title}"
+            for result in task_results
+        )
+        memory = TaskMemory(
+            id=f"harness-{artifacts.run_id}",
+            goal=plan.goal,
+            changed_files=changed_files,
+            tests=tests,
+            result=status,
+            summary=summary or "Harness run completed without task details.",
+        )
+        path = self.memory_store.write_task_memory(memory)
+        self.store.append_event(
+            artifacts,
+            {
+                "type": "memory_written",
+                "path": str(path),
+            },
+        )
+        return path

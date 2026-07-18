@@ -13,6 +13,7 @@ Mini version: simple subprocess call with deny-pattern matching.
 from __future__ import annotations
 
 import subprocess
+import sys
 from typing import Any
 
 from miniclaudecode.workspace import WorkspacePolicy
@@ -67,6 +68,7 @@ class BashTool(Tool):
 
     def execute(self, params: dict[str, Any]) -> ToolResult:
         command = params.get("command", "")
+        command = _normalize_command(command)
         if not command.strip():
             return ToolResult(output="Error: empty command", is_error=True)
         workspace_denial = self.workspace.validate_command(command)
@@ -94,6 +96,7 @@ class BashTool(Tool):
             if result.stderr:
                 output_parts.append(f"STDERR:\n{result.stderr}")
             output = "\n".join(output_parts) or "(no output)"
+            output = self._normalize_output(output)
             if len(output) > 50_000:
                 output = output[:50_000] + "\n... (truncated)"
             return ToolResult(output=output, is_error=result.returncode != 0)
@@ -101,3 +104,18 @@ class BashTool(Tool):
             return ToolResult(output="Error: command timed out after 120s", is_error=True)
         except Exception as exc:
             return ToolResult(output=f"Error: {exc}", is_error=True)
+
+    def _normalize_output(self, output: str) -> str:
+        posix_root = self.workspace.root.as_posix()
+        native_root = str(self.workspace.root)
+        if posix_root != native_root:
+            output = output.replace(posix_root, native_root)
+        return output
+
+
+def _normalize_command(command: str) -> str:
+    if sys.platform == "win32" and command == "python3":
+        return "python"
+    if sys.platform == "win32" and command.startswith("python3 "):
+        return "python " + command[len("python3 ") :]
+    return command

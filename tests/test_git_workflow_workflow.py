@@ -179,6 +179,25 @@ class TestGitWorkflow(unittest.TestCase):
         self.assertIn("## Test Result", markdown)
         self.assertIn("## Suggested Commit Message", markdown)
 
+    def test_report_can_be_converted_to_task_memory(self):
+        report = GitWorkflow(
+            worktree=FakeWorktree(status()),
+            diff_collector=FakeDiffCollector(
+                diff(FileChange("miniclaudecode/cli.py", "modified", 1, 0)),
+                diff(),
+            ),
+            test_runner=FakeTestRunner(test_result()),
+            commit_message_generator=FakeCommitMessageGenerator(),
+        ).analyze()
+
+        memory = report.to_task_memory("git-workflow-test")
+
+        self.assertEqual(memory.id, "git-workflow-test")
+        self.assertEqual(memory.result, "passed")
+        self.assertIn("miniclaudecode/cli.py", memory.changed_files)
+        self.assertIn("python -m unittest discover", memory.tests)
+        self.assertIn("Generated commit message", memory.summary)
+
     def test_merge_diff_summaries_combines_same_path(self):
         merged = merge_diff_summaries([
             diff(FileChange("file.py", "modified", 2, 1)),
