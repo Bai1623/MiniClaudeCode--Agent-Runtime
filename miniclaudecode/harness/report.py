@@ -62,8 +62,10 @@ class FinalReportGenerator:
             f"Events: {result.artifacts.events_path}",
             f"Evaluator Reports: {result.artifacts.evaluator_reports_dir}",
             f"Traces: {result.artifacts.traces_dir}",
-            "",
         ])
+        if result.memory_path is not None:
+            lines.append(f"Memory: {result.memory_path}")
+        lines.append("")
 
         if git_report is not None:
             lines.extend([

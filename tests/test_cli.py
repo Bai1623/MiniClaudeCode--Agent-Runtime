@@ -6,21 +6,27 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr
 from io import StringIO
+from pathlib import Path
 from unittest.mock import patch
 
 from miniclaudecode.cli import (
+    build_project_summary,
     build_parser,
     default_harness_tasks,
     list_harness_runs,
+    list_memory_records,
     run_git_commit_message,
     run_git_summary,
     run_harness,
+    run_memory_context,
+    run_memory_index,
 )
 from miniclaudecode.git_workflow.diff_summary import DiffSummary, FileChange
 from miniclaudecode.git_workflow.test_runner import TestRunResult
 from miniclaudecode.git_workflow.workflow import GitWorkflowReport
 from miniclaudecode.git_workflow.worktree import WorktreeStatus
 from miniclaudecode.harness.artifacts import ArtifactStore
+from miniclaudecode.memory import FileFingerprint, FileSummary, MemoryStore, ProjectSummary
 
 
 class TestCliHarnessOptions(unittest.TestCase):
@@ -87,12 +93,16 @@ class TestCliHarnessOptions(unittest.TestCase):
         args = build_parser().parse_args(["--git-summary", "--skip-git-tests"])
         output = StringIO()
 
-        with patch("miniclaudecode.cli.build_git_workflow_report", return_value=make_git_report()):
+        with (
+            patch("miniclaudecode.cli.build_git_workflow_report", return_value=make_git_report()),
+            patch("miniclaudecode.cli.write_git_workflow_memory", return_value=Path("memory.md")),
+        ):
             exit_code = run_git_summary(args, output=output)
 
         self.assertEqual(exit_code, 0)
         self.assertIn("## Git Workflow Report", output.getvalue())
         self.assertIn("Branch: master", output.getvalue())
+        self.assertIn("Memory: memory.md", output.getvalue())
 
     def test_run_git_commit_message_prints_suggested_message(self):
         args = build_parser().parse_args(["--git-commit-message", "--skip-git-tests"])
@@ -103,6 +113,91 @@ class TestCliHarnessOptions(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(output.getvalue().strip(), "Update implementation")
+
+    def test_parser_accepts_memory_options(self):
+        args = build_parser().parse_args(["--memory-index"])
+        self.assertTrue(args.memory_index)
+
+        args = build_parser().parse_args(["--memory-context", "Fix runtime"])
+        self.assertEqual(args.memory_context, "Fix runtime")
+
+        args = build_parser().parse_args(["--list-memory"])
+        self.assertTrue(args.list_memory)
+
+    def test_list_memory_records_outputs_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory")
+            store.write_project_summary(_project_summary())
+            store.write_file_summary(_file_summary("miniclaudecode/cli.py"))
+            output = StringIO()
+
+            list_memory_records(store, output=output)
+
+        self.assertIn("Project summary: yes", output.getvalue())
+        self.assertIn("File summaries: 1", output.getvalue())
+
+    def test_run_memory_context_prints_and_writes_latest_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory")
+            store.write_project_summary(_project_summary())
+            store.write_file_summary(
+                FileSummary(
+                    path="miniclaudecode/memory/context_builder.py",
+                    sha256="abc123",
+                    size_bytes=10,
+                    updated_at="2026-06-29T00:00:00Z",
+                    language="python",
+                    symbols=["ContextBuilder"],
+                    summary="Builds context from memory.",
+                )
+            )
+            args = build_parser().parse_args(["--memory-context", "ContextBuilder"])
+            output = StringIO()
+
+            with patch("miniclaudecode.cli.MemoryStore", return_value=store):
+                exit_code = run_memory_context(args, output=output)
+
+            saved = store.context_dir / "latest.md"
+            saved_exists = saved.exists()
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(saved_exists)
+        self.assertIn("Project Memory Context", output.getvalue())
+        self.assertIn("Memory context:", output.getvalue())
+
+    def test_run_memory_index_refreshes_file_summaries(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory")
+            args = build_parser().parse_args(["--memory-index"])
+            output = StringIO()
+
+            with (
+                patch("miniclaudecode.cli.MemoryStore", return_value=store),
+                patch("miniclaudecode.cli.ProjectIndex", return_value=FakeProjectIndex()),
+                patch("miniclaudecode.cli.Summarizer", return_value=FakeSummarizer()),
+                patch("miniclaudecode.cli.Path.cwd", return_value=Path("miniClaudeCode-dev")),
+            ):
+                exit_code = run_memory_index(args, output=output)
+            file_summary_count = len(store.list_file_summaries())
+            has_project_summary = store.read_project_summary() is not None
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(file_summary_count, 1)
+        self.assertTrue(has_project_summary)
+        self.assertIn("Memory index refreshed: 1/1 files", output.getvalue())
+
+    def test_build_project_summary_uses_scanned_files(self):
+        summary = build_project_summary(
+            [
+                FileFingerprint("miniclaudecode/cli.py", "abc", 1, "now"),
+                FileFingerprint("tests/test_cli.py", "def", 1, "now"),
+            ],
+            Path("miniClaudeCode-dev"),
+        )
+
+        self.assertEqual(summary.name, "miniClaudeCode-dev")
+        self.assertEqual(summary.modules, ["miniclaudecode", "tests"])
+        self.assertIn("python -m unittest discover", summary.test_commands)
 
 
 def make_git_report() -> GitWorkflowReport:
@@ -127,6 +222,58 @@ def make_git_report() -> GitWorkflowReport:
             stderr="",
         ),
         commit_message="Update implementation",
+    )
+
+
+class FakeProjectIndex:
+    def __init__(self) -> None:
+        self.fingerprint = FileFingerprint(
+            path="miniclaudecode/cli.py",
+            sha256="abc123",
+            size_bytes=10,
+            updated_at="2026-06-29T00:00:00Z",
+        )
+
+    def scan(self):
+        return [self.fingerprint]
+
+    def is_summary_stale(self, summary):
+        return True
+
+
+class FakeSummarizer:
+    def summarize_file(self, path, fingerprint):
+        return FileSummary(
+            path=fingerprint.path,
+            sha256=fingerprint.sha256,
+            size_bytes=fingerprint.size_bytes,
+            updated_at=fingerprint.updated_at,
+            language="python",
+            symbols=["main"],
+            summary="CLI entrypoint.",
+        )
+
+
+def _project_summary() -> ProjectSummary:
+    return ProjectSummary(
+        name="miniClaudeCode",
+        updated_at="2026-06-29T00:00:00Z",
+        modules=["memory"],
+        capabilities=["Memory and Context Engineering"],
+        entrypoints=["python -m miniclaudecode"],
+        test_commands=["python -m unittest discover"],
+    )
+
+
+def _file_summary(path: str) -> FileSummary:
+    return FileSummary(
+        path=path,
+        sha256="abc123",
+        size_bytes=10,
+        updated_at="2026-06-29T00:00:00Z",
+        language="python",
+        symbols=["main"],
+        summary="CLI entrypoint.",
     )
 
 

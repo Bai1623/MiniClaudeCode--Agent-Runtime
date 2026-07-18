@@ -121,6 +121,13 @@ class MemoryStore:
             key=lambda item: item.id,
         )
 
+    def write_context(self, name: str, content: str) -> Path:
+        self.ensure_dirs()
+        file_stem = name if re.fullmatch(r"[A-Za-z0-9._-]+", name) else _safe_name(name)
+        path = self.context_dir / f"{file_stem}.md"
+        path.write_text(content.rstrip() + "\n", encoding="utf-8")
+        return path
+
     def _write_record(
         self,
         path: Path,

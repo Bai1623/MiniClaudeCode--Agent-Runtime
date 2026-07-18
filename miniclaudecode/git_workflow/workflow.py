@@ -9,6 +9,7 @@ from miniclaudecode.git_workflow.commit_message import CommitMessageGenerator
 from miniclaudecode.git_workflow.diff_summary import DiffSummary, DiffSummaryCollector, FileChange
 from miniclaudecode.git_workflow.test_runner import TestRunResult, TestRunner
 from miniclaudecode.git_workflow.worktree import WorktreeInspector, WorktreeStatus
+from miniclaudecode.memory.records import TaskMemory
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,37 @@ class GitWorkflowReport:
             "```",
         ])
         return "\n".join(lines)
+
+    def to_task_memory(self, memory_id: str = "git-workflow-latest") -> TaskMemory:
+        tests: list[str] = []
+        result = "not_run"
+        if self.test_result is not None:
+            tests = [" ".join(self.test_result.command)]
+            result = "passed" if self.test_result.passed else "failed"
+
+        changed_files = sorted(
+            {
+                *self.status.changed_files,
+                *self.status.staged_files,
+                *self.status.untracked_files,
+                *[change.path for change in self.diff_summary.files],
+            }
+        )
+        summary = (
+            f"Branch {self.status.branch or 'unknown'}; "
+            f"{len(changed_files)} files changed; "
+            f"+{self.diff_summary.total_additions} "
+            f"-{self.diff_summary.total_deletions}; "
+            f"commit message: {self.commit_message}"
+        )
+        return TaskMemory(
+            id=memory_id,
+            goal="Git workflow engineering closure",
+            changed_files=changed_files,
+            tests=tests,
+            result=result,
+            summary=summary,
+        )
 
 
 class GitWorkflow:

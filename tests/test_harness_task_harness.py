@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from pathlib import Path
 
 from miniclaudecode.harness.artifacts import ArtifactStore
 from miniclaudecode.harness.evaluator import EvaluationCheck, EvaluationReport
 from miniclaudecode.harness.executor import ExecutionResult
 from miniclaudecode.harness.planner import Planner, TaskSpec
 from miniclaudecode.harness.task_harness import HarnessRunResult, TaskHarness, TaskRunResult
+from miniclaudecode.memory import MemoryStore
 
 
 class FakeExecutor:
@@ -150,6 +152,34 @@ class TestTaskHarness(unittest.TestCase):
 
         self.assertEqual(result.status, "failed")
         self.assertEqual(len(result.task_results[0].evaluations), 2)
+
+    def test_run_writes_task_memory_when_store_is_enabled(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_store = ArtifactStore(base_dir=Path(tmpdir) / "runs")
+            memory_store = MemoryStore(Path(tmpdir) / "memory")
+            harness = TaskHarness(
+                store=artifact_store,
+                planner=Planner(),
+                executor=FakeExecutor(),
+                evaluator=FakeEvaluator(["passed"]),
+                memory_store=memory_store,
+            )
+            result = harness.run(
+                request="build memory integration",
+                goal="Build memory integration",
+                tasks=[{"title": "Add memory write", "acceptance": ["add tests"]}],
+            )
+            events = [
+                json.loads(line)
+                for line in result.artifacts.events_path.read_text(encoding="utf-8").splitlines()
+            ]
+            memory_count = len(memory_store.list_task_memories())
+            memory_id = memory_store.list_task_memories()[0].id
+
+        self.assertIsNotNone(result.memory_path)
+        self.assertEqual(memory_count, 1)
+        self.assertEqual(memory_id, f"harness-{result.artifacts.run_id}")
+        self.assertEqual(events[-1]["type"], "memory_written")
 
 
 if __name__ == "__main__":

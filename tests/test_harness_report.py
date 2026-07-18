@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from pathlib import Path
 
 from miniclaudecode.harness.artifacts import ArtifactStore
 from miniclaudecode.harness.evaluator import EvaluationCheck, EvaluationReport
@@ -109,6 +110,22 @@ class TestFinalReportGenerator(unittest.TestCase):
         self.assertIn("## Git Workflow Report", report)
         self.assertIn("Branch: master", report)
         self.assertIn("Update implementation", report)
+
+    def test_render_report_with_memory_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            result = self.make_result(store)
+            result = HarnessRunResult(
+                artifacts=result.artifacts,
+                plan=result.plan,
+                task_results=result.task_results,
+                memory_path=Path(tmpdir) / "memory" / "tasks" / "harness.md",
+            )
+
+            report = FinalReportGenerator().render(result)
+
+        self.assertIn("Memory:", report)
+        self.assertIn("harness.md", report)
 
 
 if __name__ == "__main__":
