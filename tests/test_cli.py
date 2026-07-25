@@ -10,9 +10,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from miniclaudecode.cli import (
-    build_project_summary,
     build_config,
     build_parser,
+    build_project_summary,
     default_harness_tasks,
     list_harness_runs,
     list_memory_records,
