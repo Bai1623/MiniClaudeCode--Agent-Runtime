@@ -28,6 +28,7 @@ class ToolRuntimeConfig:
     max_tool_result_chars: int = 12_000
     tool_result_head_chars: int = 8_000
     tool_result_tail_chars: int = 4_000
+    tool_result_snippet_lines: int = 80
     enabled_tools: list[str] = field(default_factory=list)
     disabled_tools: list[str] = field(default_factory=list)
 
@@ -75,6 +76,7 @@ class Config:
         max_tool_result_chars: int | None = None,
         tool_result_head_chars: int | None = None,
         tool_result_tail_chars: int | None = None,
+        tool_result_snippet_lines: int | None = None,
         enabled_tools: list[str] | None = None,
         disabled_tools: list[str] | None = None,
         permission_mode: PermissionMode | str | None = None,
@@ -105,6 +107,8 @@ class Config:
             self.tool_runtime.tool_result_head_chars = tool_result_head_chars
         if tool_result_tail_chars is not None:
             self.tool_runtime.tool_result_tail_chars = tool_result_tail_chars
+        if tool_result_snippet_lines is not None:
+            self.tool_runtime.tool_result_snippet_lines = tool_result_snippet_lines
         if enabled_tools is not None:
             self.tool_runtime.enabled_tools = list(enabled_tools)
         if disabled_tools is not None:
@@ -169,6 +173,14 @@ class Config:
     @tool_result_tail_chars.setter
     def tool_result_tail_chars(self, value: int) -> None:
         self.tool_runtime.tool_result_tail_chars = value
+
+    @property
+    def tool_result_snippet_lines(self) -> int:
+        return self.tool_runtime.tool_result_snippet_lines
+
+    @tool_result_snippet_lines.setter
+    def tool_result_snippet_lines(self, value: int) -> None:
+        self.tool_runtime.tool_result_snippet_lines = value
 
     @property
     def permission_mode(self) -> PermissionMode:
@@ -257,6 +269,7 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         "MINICLAUDECODE_MAX_TOOL_RESULT_CHARS": "tool_runtime.max_tool_result_chars",
         "MINICLAUDECODE_TOOL_RESULT_HEAD_CHARS": "tool_runtime.tool_result_head_chars",
         "MINICLAUDECODE_TOOL_RESULT_TAIL_CHARS": "tool_runtime.tool_result_tail_chars",
+        "MINICLAUDECODE_TOOL_RESULT_SNIPPET_LINES": "tool_runtime.tool_result_snippet_lines",
         "MINICLAUDECODE_PERMISSION_MODE": "safety.permission_mode",
         "MINICLAUDECODE_WORKSPACE_ROOT": "safety.workspace_root",
         "MINICLAUDECODE_HARNESS_RUNS_DIR": "harness.runs_dir",
@@ -304,6 +317,8 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.tool_runtime.tool_result_head_chars = _parse_int(key, value)
     elif key in {"tool_result_tail_chars", "tool_runtime.tool_result_tail_chars"}:
         config.tool_runtime.tool_result_tail_chars = _parse_int(key, value)
+    elif key in {"tool_result_snippet_lines", "tool_runtime.tool_result_snippet_lines"}:
+        config.tool_runtime.tool_result_snippet_lines = _parse_int(key, value)
     elif key in {"enabled_tools", "tool_runtime.enabled_tools"}:
         config.tool_runtime.enabled_tools = _parse_string_list(key, value)
     elif key in {"disabled_tools", "tool_runtime.disabled_tools"}:

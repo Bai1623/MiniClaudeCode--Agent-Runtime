@@ -203,6 +203,8 @@ class ToolRuntime:
             max_chars=self.config.max_tool_result_chars,
             head_chars=self.config.tool_result_head_chars,
             tail_chars=self.config.tool_result_tail_chars,
+            tool_name=tool_name,
+            snippet_lines=self.config.tool_result_snippet_lines,
         )
         ended_at = _utc_now()
         tool_call_id = call.get("id", "")

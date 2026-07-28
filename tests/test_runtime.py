@@ -119,11 +119,73 @@ class TestCompression(unittest.TestCase):
         self.assertTrue(compressed.metadata["compressed"])
         self.assertEqual(compressed.metadata["original_output_chars"], 30)
 
+    def test_long_output_keeps_attention_snippets(self):
+        output = (
+            "start\n" * 5
+            + "INFO: processing files\n" * 3
+            + "Traceback (most recent call last):\n"
+            + "  File \"main.py\", line 10, in <module>\n"
+            + "ValueError: invalid value\n"
+            + "end\n" * 5
+            + "final tail\n"
+        )
+        result = ToolResult(output=output)
+        compressed = compress_tool_result(result, max_chars=80, head_chars=20, tail_chars=20)
+        self.assertIn("关键片段（上下文）:", compressed.output)
+        self.assertIn("Traceback (most recent call last):", compressed.output)
+        self.assertIn("ValueError", compressed.output)
+        self.assertIn("... output truncated ...", compressed.output)
+        self.assertTrue(compressed.metadata["kept_snippet_lines"] > 0)
+
+    def test_grep_matches_are_prioritized_in_snippets(self):
+        output = "\n".join(
+            [f"src/file{i}.py:{i}:def fn_{i}(): pass" for i in range(1, 100)]
+            + ["end-of-file"]
+        )
+        result = ToolResult(output=output)
+        compressed = compress_tool_result(
+            result,
+            max_chars=80,
+            head_chars=20,
+            tail_chars=20,
+            tool_name="grep",
+            snippet_lines=12,
+        )
+        self.assertIn("关键片段（上下文）:", compressed.output)
+        self.assertIn("src/file1.py:1:def fn_1(): pass", compressed.output)
+        self.assertNotIn("No matches found.", compressed.output)
+        self.assertEqual(compressed.metadata["snippet_tool"], "grep")
+
+    def test_bash_snippets_include_stderr_area(self):
+        output = (
+            "running tests\n"
+            "STDOUT: all good\n"
+            "STDERR:\n"
+            "Traceback (most recent call last):\n"
+            '  File "main.py", line 10, in <module>\n'
+            "ValueError: bad value\n"
+            "exit\n"
+        )
+        result = ToolResult(output=output)
+        compressed = compress_tool_result(
+            result,
+            max_chars=120,
+            head_chars=16,
+            tail_chars=16,
+            tool_name="bash",
+            snippet_lines=10,
+        )
+        self.assertIn("STDERR:", compressed.output)
+        self.assertIn("ValueError", compressed.output)
+        self.assertIn("关键片段（上下文）:", compressed.output)
+        self.assertEqual(compressed.metadata["snippet_tool"], "bash")
+
     def test_default_config_has_tool_result_limits(self):
         config = Config()
         self.assertEqual(config.max_tool_result_chars, 12_000)
         self.assertEqual(config.tool_result_head_chars, 8_000)
         self.assertEqual(config.tool_result_tail_chars, 4_000)
+        self.assertEqual(config.tool_result_snippet_lines, 80)
 
 
 class TestTracing(unittest.TestCase):

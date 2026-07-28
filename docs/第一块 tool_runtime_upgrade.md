@@ -162,12 +162,18 @@ validation_error
 
 新增 `miniclaudecode/runtime/compression.py`。
 
-工具输出过长时，Runtime 会保留头部和尾部，中间插入截断说明：
+工具输出过长时，Runtime 会保留头部和尾部，并按工具类型抽取关键行后插入中间说明：
+
+- `bash`：优先保留 STDERR 与错误上下文行  
+- `grep`：优先保留命中的匹配行  
+- 默认：保留含 `error/exception/traceback` 等关键字的行
 
 ```text
 ... output truncated ...
 Original length: ...
 Showing first ... chars and last ... chars.
+关键片段（上下文）:
+...
 ```
 
 并在 metadata 中记录：
@@ -175,6 +181,8 @@ Showing first ... chars and last ... chars.
 ```text
 compressed = True
 original_output_chars = 原始长度
+kept_snippet_lines = 关键片段行数
+snippet_tool = 发起压缩的工具名
 ```
 
 默认配置：
@@ -183,6 +191,7 @@ original_output_chars = 原始长度
 max_tool_result_chars = 12000
 tool_result_head_chars = 8000
 tool_result_tail_chars = 4000
+tool_result_snippet_lines = 80
 ```
 
 价值：
