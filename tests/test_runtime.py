@@ -180,6 +180,21 @@ class TestCompression(unittest.TestCase):
         self.assertIn("关键片段（上下文）:", compressed.output)
         self.assertEqual(compressed.metadata["snippet_tool"], "bash")
 
+    def test_compressed_output_respects_max_chars_limit(self):
+        output = "\n".join([f"line-{i}" for i in range(1, 200)]) + "\nERROR: fail" * 10
+        result = ToolResult(output=output)
+        compressed = compress_tool_result(
+            result,
+            max_chars=120,
+            head_chars=50,
+            tail_chars=30,
+            tool_name="grep",
+            snippet_lines=120,
+        )
+        self.assertLessEqual(len(compressed.output), 120)
+        self.assertTrue(compressed.metadata["compressed"])
+        self.assertTrue(compressed.metadata["snippet_truncated"])
+
     def test_default_config_has_tool_result_limits(self):
         config = Config()
         self.assertEqual(config.max_tool_result_chars, 12_000)
