@@ -20,6 +20,14 @@ class PresentedError:
     details: str | None = None
 
 
+class MissingApiKeyError(RuntimeError):
+    """Raised when an agent command needs Anthropic credentials."""
+
+    def __init__(self, env_var: str = "ANTHROPIC_API_KEY") -> None:
+        super().__init__(f"{env_var} is not set")
+        self.env_var = env_var
+
+
 class ErrorPresenter:
     """Translate implementation exceptions into terminal-friendly guidance."""
 
@@ -142,6 +150,7 @@ class ErrorPresenter:
         return (
             "api_key" in haystack
             or "api key" in haystack
+            or "missingapikey" in haystack
             or ("anthropic" in haystack and "authentication" in haystack)
             or ("anthropic" in haystack and "unauthorized" in haystack)
             or "401" in haystack

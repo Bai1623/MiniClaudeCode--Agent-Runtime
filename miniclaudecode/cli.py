@@ -11,13 +11,13 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from .config import Config, PermissionMode, load_config
-from .errors import ErrorPresenter
+from .errors import ErrorPresenter, MissingApiKeyError
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
 from .harness.executor import Executor
@@ -263,6 +263,13 @@ def build_agent(args: argparse.Namespace, config: Config | None = None) -> Agent
         config=config,
         registry=ToolRegistry.default(config=config),
     )
+
+
+def require_anthropic_api_key(environ: Mapping[str, str] | None = None) -> None:
+    """Fail before SDK/client construction when agent commands need credentials."""
+    values = os.environ if environ is None else environ
+    if not values.get("ANTHROPIC_API_KEY"):
+        raise MissingApiKeyError()
 
 
 def list_harness_runs(store: ArtifactStore, output=sys.stdout) -> None:
@@ -515,12 +522,12 @@ def _main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return run_doctor(config)
 
-    agent = build_agent(args, config=config)
-
     if args.command == "run":
         if not args.prompt:
             print("Error: run requires a prompt.", file=sys.stderr)
             return 2
+        require_anthropic_api_key()
+        agent = build_agent(args, config=config)
         try:
             agent.run(args.prompt)
             print()
@@ -530,6 +537,8 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.prompt:
+        require_anthropic_api_key()
+        agent = build_agent(args, config=config)
         try:
             agent.run(args.prompt)
             print()
@@ -539,9 +548,13 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "chat":
+        require_anthropic_api_key()
+        agent = build_agent(args, config=config)
         run_interactive(agent)
         return 0
 
+    require_anthropic_api_key()
+    agent = build_agent(args, config=config)
     run_interactive(agent)
     return 0
 

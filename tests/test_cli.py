@@ -171,6 +171,35 @@ class TestCliHarnessOptions(unittest.TestCase):
         self.assertIn("Anthropic API key is missing", stderr.getvalue())
         self.assertIn("How to fix:", stderr.getvalue())
 
+    def test_run_preflights_missing_api_key_before_building_agent(self):
+        stderr = StringIO()
+
+        with (
+            patch.dict("miniclaudecode.cli.os.environ", {}, clear=True),
+            patch("miniclaudecode.cli.build_agent") as build_agent,
+            redirect_stderr(stderr),
+        ):
+            exit_code = main(["run", "hello"])
+
+        self.assertEqual(exit_code, 1)
+        build_agent.assert_not_called()
+        self.assertIn("Anthropic API key is missing", stderr.getvalue())
+        self.assertIn("ANTHROPIC_API_KEY", stderr.getvalue())
+
+    def test_run_without_prompt_does_not_require_api_key(self):
+        stderr = StringIO()
+
+        with (
+            patch.dict("miniclaudecode.cli.os.environ", {}, clear=True),
+            patch("miniclaudecode.cli.build_agent") as build_agent,
+            redirect_stderr(stderr),
+        ):
+            exit_code = main(["run"])
+
+        self.assertEqual(exit_code, 2)
+        build_agent.assert_not_called()
+        self.assertIn("run requires a prompt", stderr.getvalue())
+
     def test_run_harness_requires_prompt(self):
         args = build_parser().parse_args(["--run-harness"])
 
