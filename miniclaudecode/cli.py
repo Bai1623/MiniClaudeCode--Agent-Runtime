@@ -309,7 +309,9 @@ def run_doctor(config: Config, registry: ToolRegistry | None = None, output=sys.
     print(f"  tools: {len(registry.all_tools())}", file=output)
     print(f"  anthropic_api_key: {'set' if has_api_key else 'missing'}", file=output)
     if not has_api_key:
-        print("  warning: set ANTHROPIC_API_KEY before running chat or run.", file=output)
+        print(file=output)
+        ERROR_PRESENTER.print(MissingApiKeyError(), output=output)
+        return 1
     return 0
 
 

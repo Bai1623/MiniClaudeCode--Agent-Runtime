@@ -153,10 +153,22 @@ class TestCliHarnessOptions(unittest.TestCase):
         with patch.dict("miniclaudecode.cli.os.environ", {}, clear=True):
             exit_code = run_doctor(Config(model="doctor-model"), registry=registry, output=output)
 
-        self.assertEqual(exit_code, 0)
+        self.assertEqual(exit_code, 1)
         self.assertIn("doctor-model", output.getvalue())
         self.assertIn("tools: 1", output.getvalue())
         self.assertIn("anthropic_api_key: missing", output.getvalue())
+        self.assertIn("Anthropic API key is missing", output.getvalue())
+
+    def test_run_doctor_returns_zero_when_api_key_is_set(self):
+        output = StringIO()
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        with patch.dict("miniclaudecode.cli.os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True):
+            exit_code = run_doctor(Config(model="doctor-model"), registry=registry, output=output)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("anthropic_api_key: set", output.getvalue())
+        self.assertNotIn("Anthropic API key is missing", output.getvalue())
 
     def test_main_presents_agent_creation_error(self):
         stderr = StringIO()

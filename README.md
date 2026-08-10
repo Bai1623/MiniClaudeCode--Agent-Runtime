@@ -204,6 +204,8 @@ python -m miniclaudecode tools
 python -m miniclaudecode doctor
 ```
 
+如果 `ANTHROPIC_API_KEY` 缺失，`doctor` 会输出修复动作并返回非零退出码，适合放进 CI 或上线前检查。
+
 兼容旧的 prompt 写法：
 
 ```bash
