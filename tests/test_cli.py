@@ -206,6 +206,45 @@ class TestCliHarnessOptions(unittest.TestCase):
         self.assertIn("workspace_root_status: missing", output.getvalue())
         self.assertIn("Create the workspace directory", output.getvalue())
 
+    def test_run_doctor_reports_creatable_harness_runs_dir(self):
+        output = StringIO()
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.dict("miniclaudecode.cli.os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
+        ):
+            runs_dir = str(Path(tmpdir) / "runs")
+            exit_code = run_doctor(
+                Config(model="doctor-model", workspace_root=tmpdir, harness_runs_dir=runs_dir),
+                registry=registry,
+                output=output,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("harness_runs_dir_status: creatable", output.getvalue())
+
+    def test_run_doctor_fails_when_harness_runs_parent_is_not_directory(self):
+        output = StringIO()
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.dict("miniclaudecode.cli.os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
+        ):
+            parent_file = Path(tmpdir) / "parent-file"
+            parent_file.write_text("not a directory", encoding="utf-8")
+            runs_dir = str(parent_file / "runs")
+            exit_code = run_doctor(
+                Config(model="doctor-model", workspace_root=tmpdir, harness_runs_dir=runs_dir),
+                registry=registry,
+                output=output,
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("harness_runs_dir_status: parent_not_directory", output.getvalue())
+        self.assertIn("Point MINICLAUDECODE_HARNESS_RUNS_DIR", output.getvalue())
+
     def test_main_presents_agent_creation_error(self):
         stderr = StringIO()
 

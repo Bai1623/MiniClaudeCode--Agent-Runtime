@@ -299,8 +299,10 @@ def run_doctor(config: Config, registry: ToolRegistry | None = None, output=sys.
     registry = registry or ToolRegistry.default(config=config)
     workspace_root = config.workspace_root
     workspace_path = Path(workspace_root).expanduser()
+    runs_path = Path(config.harness.runs_dir).expanduser()
     has_api_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     workspace_status, workspace_issue = diagnose_workspace_root(workspace_path)
+    runs_status, runs_issue = diagnose_harness_runs_dir(runs_path)
 
     print("miniClaudeCode doctor", file=output)
     print(f"  model: {config.model.model}", file=output)
@@ -309,6 +311,7 @@ def run_doctor(config: Config, registry: ToolRegistry | None = None, output=sys.
     print(f"  workspace_root: {workspace_root}", file=output)
     print(f"  workspace_root_status: {workspace_status}", file=output)
     print(f"  harness_runs_dir: {config.harness.runs_dir}", file=output)
+    print(f"  harness_runs_dir_status: {runs_status}", file=output)
     print(f"  tools: {len(registry.all_tools())}", file=output)
     print(f"  anthropic_api_key: {'set' if has_api_key else 'missing'}", file=output)
     if workspace_issue:
@@ -318,10 +321,17 @@ def run_doctor(config: Config, registry: ToolRegistry | None = None, output=sys.
         print(f"  1. Create the workspace directory: {workspace_path}", file=output)
         print("  2. Point MINICLAUDECODE_WORKSPACE_ROOT or config.safety.workspace_root to an existing directory.", file=output)
         print("  3. Make sure the current user can read and write inside that directory.", file=output)
+    if runs_issue:
+        print(file=output)
+        print(f"Harness runs issue: {runs_issue}", file=output)
+        print("How to fix:", file=output)
+        print(f"  1. Create the harness runs parent directory: {runs_path.parent}", file=output)
+        print("  2. Point MINICLAUDECODE_HARNESS_RUNS_DIR or config.harness.runs_dir to a writable location.", file=output)
+        print("  3. Make sure the current user can create files in that directory.", file=output)
     if not has_api_key:
         print(file=output)
         ERROR_PRESENTER.print(MissingApiKeyError(), output=output)
-    return 0 if has_api_key and workspace_issue is None else 1
+    return 0 if has_api_key and workspace_issue is None and runs_issue is None else 1
 
 
 def diagnose_workspace_root(path: Path) -> tuple[str, str | None]:
@@ -333,6 +343,29 @@ def diagnose_workspace_root(path: Path) -> tuple[str, str | None]:
     if not os.access(path, os.R_OK | os.W_OK | os.X_OK):
         return "not_writable", f"{path} is not readable, writable, and traversable."
     return "ok", None
+
+
+def diagnose_harness_runs_dir(path: Path) -> tuple[str, str | None]:
+    """Return doctor status and actionable issue for harness artifact storage."""
+    if path.exists():
+        if not path.is_dir():
+            return "not_directory", f"{path} exists but is not a directory."
+        if not os.access(path, os.R_OK | os.W_OK | os.X_OK):
+            return "not_writable", f"{path} is not readable, writable, and traversable."
+        return "ok", None
+
+    parent = path.parent
+    nearest_existing = parent
+    while not nearest_existing.exists() and nearest_existing != nearest_existing.parent:
+        nearest_existing = nearest_existing.parent
+
+    if not nearest_existing.exists():
+        return "parent_missing", f"No existing parent found for {path}."
+    if not nearest_existing.is_dir():
+        return "parent_not_directory", f"{nearest_existing} exists but is not a directory."
+    if not os.access(nearest_existing, os.W_OK | os.X_OK):
+        return "parent_not_writable", f"{nearest_existing} is not writable and traversable."
+    return "creatable", None
 
 
 def default_harness_tasks(prompt: str, task_titles: list[str] | None) -> list[TaskSpec | dict[str, Any]]:
