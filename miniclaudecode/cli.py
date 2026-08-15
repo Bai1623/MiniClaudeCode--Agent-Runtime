@@ -298,21 +298,41 @@ def list_tools(registry: ToolRegistry, output=sys.stdout) -> int:
 def run_doctor(config: Config, registry: ToolRegistry | None = None, output=sys.stdout) -> int:
     registry = registry or ToolRegistry.default(config=config)
     workspace_root = config.workspace_root
+    workspace_path = Path(workspace_root).expanduser()
     has_api_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    workspace_status, workspace_issue = diagnose_workspace_root(workspace_path)
 
     print("miniClaudeCode doctor", file=output)
     print(f"  model: {config.model.model}", file=output)
     print(f"  permission_mode: {config.permission_mode.value}", file=output)
     print(f"  max_turns: {config.max_turns}", file=output)
     print(f"  workspace_root: {workspace_root}", file=output)
+    print(f"  workspace_root_status: {workspace_status}", file=output)
     print(f"  harness_runs_dir: {config.harness.runs_dir}", file=output)
     print(f"  tools: {len(registry.all_tools())}", file=output)
     print(f"  anthropic_api_key: {'set' if has_api_key else 'missing'}", file=output)
+    if workspace_issue:
+        print(file=output)
+        print(f"Workspace issue: {workspace_issue}", file=output)
+        print("How to fix:", file=output)
+        print(f"  1. Create the workspace directory: {workspace_path}", file=output)
+        print("  2. Point MINICLAUDECODE_WORKSPACE_ROOT or config.safety.workspace_root to an existing directory.", file=output)
+        print("  3. Make sure the current user can read and write inside that directory.", file=output)
     if not has_api_key:
         print(file=output)
         ERROR_PRESENTER.print(MissingApiKeyError(), output=output)
-        return 1
-    return 0
+    return 0 if has_api_key and workspace_issue is None else 1
+
+
+def diagnose_workspace_root(path: Path) -> tuple[str, str | None]:
+    """Return doctor status and actionable issue for workspace root."""
+    if not path.exists():
+        return "missing", f"{path} does not exist."
+    if not path.is_dir():
+        return "not_directory", f"{path} exists but is not a directory."
+    if not os.access(path, os.R_OK | os.W_OK | os.X_OK):
+        return "not_writable", f"{path} is not readable, writable, and traversable."
+    return "ok", None
 
 
 def default_harness_tasks(prompt: str, task_titles: list[str] | None) -> list[TaskSpec | dict[str, Any]]:

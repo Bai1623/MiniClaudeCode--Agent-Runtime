@@ -170,6 +170,42 @@ class TestCliHarnessOptions(unittest.TestCase):
         self.assertIn("anthropic_api_key: set", output.getvalue())
         self.assertNotIn("Anthropic API key is missing", output.getvalue())
 
+    def test_run_doctor_reports_valid_workspace_root(self):
+        output = StringIO()
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.dict("miniclaudecode.cli.os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
+        ):
+            exit_code = run_doctor(
+                Config(model="doctor-model", workspace_root=tmpdir),
+                registry=registry,
+                output=output,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("workspace_root_status: ok", output.getvalue())
+
+    def test_run_doctor_fails_for_missing_workspace_root(self):
+        output = StringIO()
+        registry = ToolRegistry.default(config=Config(enabled_tools=["read_file"]))
+
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.dict("miniclaudecode.cli.os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
+        ):
+            missing_root = str(Path(tmpdir) / "missing")
+            exit_code = run_doctor(
+                Config(model="doctor-model", workspace_root=missing_root),
+                registry=registry,
+                output=output,
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("workspace_root_status: missing", output.getvalue())
+        self.assertIn("Create the workspace directory", output.getvalue())
+
     def test_main_presents_agent_creation_error(self):
         stderr = StringIO()
 

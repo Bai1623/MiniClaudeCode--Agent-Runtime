@@ -198,13 +198,13 @@ python -m miniclaudecode run "帮我查看当前目录有哪些 Python 文件"
 python -m miniclaudecode tools
 ```
 
-检查配置、工具和 API Key 状态：
+检查配置、工具、workspace root 和 API Key 状态：
 
 ```bash
 python -m miniclaudecode doctor
 ```
 
-如果 `ANTHROPIC_API_KEY` 缺失，`doctor` 会输出修复动作并返回非零退出码，适合放进 CI 或上线前检查。
+如果 `ANTHROPIC_API_KEY` 缺失，或 workspace root 不存在、不是目录、不可读写，`doctor` 会输出修复动作并返回非零退出码，适合放进 CI 或上线前检查。
 
 兼容旧的 prompt 写法：
 
