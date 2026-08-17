@@ -91,6 +91,7 @@ class TraceRecorder:
             "input_preview": build_input_preview(params),
             "output_chars": len(result.output),
             "compressed": bool(result.metadata.get("compressed")),
+            "compression_strategy": result.metadata.get("compression_strategy"),
             "started_at": _format_timestamp(started_at),
             "ended_at": _format_timestamp(ended_at),
         }

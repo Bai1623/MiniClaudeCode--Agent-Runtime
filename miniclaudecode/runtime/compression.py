@@ -181,7 +181,7 @@ def _build_compressed_output(
     snippets: list[str],
     max_chars: int,
     tool_name: str | None = None,
-) -> tuple[str, bool, int]:
+) -> tuple[str, bool, int, str]:
     marker = "\n\n... output truncated ...\n"
     if snippets:
         minimum_lines = 3 if tool_name == "bash" else 1 if tool_name == "grep" else 2
@@ -191,7 +191,7 @@ def _build_compressed_output(
             minimum_lines=minimum_lines,
         )
         if snippet_section:
-            return marker + snippet_section, snippet_truncated, kept_snippet_lines
+            return marker + snippet_section, snippet_truncated, kept_snippet_lines, "snippet_only"
 
     prefix = (
         head
@@ -218,7 +218,8 @@ def _build_compressed_output(
                 required_markers=("... output truncated ...",),
             )
 
-    return compressed, snippet_truncated, kept_snippet_lines
+    strategy = "head_snippet_tail" if snippet_section else "head_tail"
+    return compressed, snippet_truncated, kept_snippet_lines, strategy
 
 
 def compress_tool_result(
@@ -245,7 +246,7 @@ def compress_tool_result(
     head = output[:head_chars]
     tail = output[-tail_chars:] if tail_chars > 0 else ""
     snippets = _collect_snippets(output.splitlines(), max_snippet_lines=max_snippet_lines, tool_name=tool_name)
-    compressed, snippet_truncated, kept_snippet_lines = _build_compressed_output(
+    compressed, snippet_truncated, kept_snippet_lines, compression_strategy = _build_compressed_output(
         output=output,
         head=head,
         tail=tail,
@@ -265,6 +266,7 @@ def compress_tool_result(
     metadata["original_output_chars"] = len(output)
     metadata["kept_snippet_lines"] = kept_snippet_lines
     metadata["snippet_truncated"] = snippet_truncated
+    metadata["compression_strategy"] = compression_strategy
     if tool_name:
         metadata["snippet_tool"] = tool_name
 

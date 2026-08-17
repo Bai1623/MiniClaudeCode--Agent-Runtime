@@ -184,6 +184,7 @@ original_output_chars = 原始长度
 kept_snippet_lines = 关键片段行数
 snippet_tool = 发起压缩的工具名
 snippet_truncated = 关键片段是否被截断
+compression_strategy = 压缩策略
 ```
 
 默认配置：
@@ -224,6 +225,7 @@ duration_ms
 input_preview
 output_chars
 compressed
+compression_strategy
 started_at
 ended_at
 ```

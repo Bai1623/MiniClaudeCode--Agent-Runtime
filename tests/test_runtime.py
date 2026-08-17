@@ -136,6 +136,7 @@ class TestCompression(unittest.TestCase):
         self.assertIn("ValueError", compressed.output)
         self.assertIn("... output truncated ...", compressed.output)
         self.assertTrue(compressed.metadata["kept_snippet_lines"] > 0)
+        self.assertEqual(compressed.metadata["compression_strategy"], "snippet_only")
 
     def test_grep_matches_are_prioritized_in_snippets(self):
         output = "\n".join(
@@ -222,7 +223,10 @@ class TestTracing(unittest.TestCase):
                 tool_call_id="toolu_test",
                 tool_name="grep",
                 params={"pattern": "AgentLoop", "path": "."},
-                result=ToolResult(output="match", metadata={"compressed": False}),
+                result=ToolResult(
+                    output="match",
+                    metadata={"compressed": True, "compression_strategy": "snippet_only"},
+                ),
                 started_at=started_at,
                 ended_at=ended_at,
             )
@@ -237,7 +241,8 @@ class TestTracing(unittest.TestCase):
         self.assertEqual(event["duration_ms"], 32)
         self.assertEqual(event["input_preview"]["pattern"], "AgentLoop")
         self.assertEqual(event["output_chars"], 5)
-        self.assertFalse(event["compressed"])
+        self.assertTrue(event["compressed"])
+        self.assertEqual(event["compression_strategy"], "snippet_only")
 
     def test_set_trace_dir_routes_next_run(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
