@@ -92,6 +92,9 @@ class TestFinalReportGenerator(unittest.TestCase):
                     "status": "ok",
                     "duration_ms": 12,
                     "output_chars": 20,
+                    "compressed": True,
+                    "compression_strategy": "snippet_only",
+                    "snippet_truncated": True,
                 }) + "\n",
                 encoding="utf-8",
             )
@@ -124,7 +127,10 @@ class TestFinalReportGenerator(unittest.TestCase):
         self.assertIn("## Audit Trail", report)
         self.assertIn("Tool calls traced: 1", report)
         self.assertIn("Repair rounds: 1", report)
-        self.assertIn("turn 1: grep ok, 12 ms, 20 output chars", report)
+        self.assertIn("Compressed tool calls: 1", report)
+        self.assertIn("Compression strategies: snippet_only=1", report)
+        self.assertIn("Snippet-truncated calls: 1", report)
+        self.assertIn("turn 1: grep ok, 12 ms, 20 output chars, compressed=snippet_only", report)
         self.assertIn("Tests: passed", report)
         self.assertIn("## Git Workflow Report", report)
         self.assertIn("Branch: master", report)

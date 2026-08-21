@@ -351,6 +351,15 @@ run_finished
 测试结果
 修改文件摘要
 trace 文件位置
+工具输出压缩统计
+```
+
+其中工具输出压缩统计来自 JSONL trace，会汇总：
+
+```text
+Compressed tool calls
+Compression strategies
+Snippet-truncated calls
 ```
 
 ### 13. list_runs

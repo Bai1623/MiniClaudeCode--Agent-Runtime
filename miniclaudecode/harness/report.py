@@ -99,8 +99,9 @@ def _render_audit_trail(result: HarnessRunResult, git_report: GitWorkflowReport 
         "",
         f"Events recorded: {len(events)}",
         f"Tool calls traced: {len(traces)}",
-        "",
     ]
+    lines.extend(_render_compression_summary(traces))
+    lines.append("")
 
     repair_events = [event for event in events if event.get("type") == "repair_started"]
     evaluation_events = [event for event in events if event.get("type") == "evaluation_failed"]
@@ -123,9 +124,8 @@ def _render_audit_trail(result: HarnessRunResult, git_report: GitWorkflowReport 
             turn = trace.get("turn", "?")
             duration = trace.get("duration_ms", "?")
             output_chars = trace.get("output_chars", "?")
-            lines.append(
-                f"- turn {turn}: {name} {status}, {duration} ms, {output_chars} output chars"
-            )
+            compression = _format_trace_compression(trace)
+            lines.append(f"- turn {turn}: {name} {status}, {duration} ms, {output_chars} output chars{compression}")
         lines.append("")
     else:
         lines.extend(["### Tool Calls", "", "No tool traces recorded.", ""])
@@ -158,6 +158,34 @@ def _render_audit_trail(result: HarnessRunResult, git_report: GitWorkflowReport 
         lines.append("")
 
     return lines
+
+
+def _render_compression_summary(traces: list[dict]) -> list[str]:
+    compressed_traces = [trace for trace in traces if trace.get("compressed")]
+    if not compressed_traces:
+        return ["Compressed tool calls: 0"]
+
+    strategies: dict[str, int] = {}
+    snippet_truncated = 0
+    for trace in compressed_traces:
+        strategy = str(trace.get("compression_strategy") or "unknown")
+        strategies[strategy] = strategies.get(strategy, 0) + 1
+        if trace.get("snippet_truncated"):
+            snippet_truncated += 1
+
+    strategy_summary = ", ".join(f"{name}={count}" for name, count in sorted(strategies.items()))
+    return [
+        f"Compressed tool calls: {len(compressed_traces)}",
+        f"Compression strategies: {strategy_summary}",
+        f"Snippet-truncated calls: {snippet_truncated}",
+    ]
+
+
+def _format_trace_compression(trace: dict) -> str:
+    if not trace.get("compressed"):
+        return ""
+    strategy = trace.get("compression_strategy") or "unknown"
+    return f", compressed={strategy}"
 
 
 def _read_trace_events(traces_dir: Path) -> list[dict]:
