@@ -225,6 +225,9 @@ duration_ms
 input_preview
 output_chars
 compressed
+original_output_chars
+kept_snippet_lines
+snippet_truncated
 compression_strategy
 started_at
 ended_at

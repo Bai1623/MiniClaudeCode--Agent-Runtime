@@ -244,6 +244,38 @@ class TestTracing(unittest.TestCase):
         self.assertTrue(event["compressed"])
         self.assertEqual(event["compression_strategy"], "snippet_only")
 
+    def test_record_tool_call_writes_compression_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            recorder = TraceRecorder(trace_dir=tmpdir)
+            run_id = recorder.start_run()
+            timestamp = datetime(2026, 6, 16, 6, 30, 0, tzinfo=timezone.utc)
+            recorder.record_tool_call(
+                run_id=run_id,
+                turn=1,
+                tool_call_id="toolu_compressed",
+                tool_name="grep",
+                params={"pattern": "Error", "path": "."},
+                result=ToolResult(
+                    output="compressed output",
+                    metadata={
+                        "compressed": True,
+                        "compression_strategy": "head_snippet_tail",
+                        "original_output_chars": 24_000,
+                        "kept_snippet_lines": 12,
+                        "snippet_truncated": True,
+                    },
+                ),
+                started_at=timestamp,
+                ended_at=timestamp,
+            )
+
+            trace_file = next(Path(tmpdir).glob("*.jsonl"))
+            event = json.loads(trace_file.read_text(encoding="utf-8").strip())
+
+        self.assertEqual(event.get("original_output_chars"), 24_000)
+        self.assertEqual(event.get("kept_snippet_lines"), 12)
+        self.assertTrue(event.get("snippet_truncated"))
+
     def test_set_trace_dir_routes_next_run(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
             recorder = TraceRecorder(trace_dir=first)
