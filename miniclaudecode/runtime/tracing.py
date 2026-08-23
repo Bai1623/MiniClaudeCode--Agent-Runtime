@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
@@ -11,6 +12,24 @@ from typing import Any
 from miniclaudecode.tools.base import ToolResult
 
 MAX_PREVIEW_VALUE_CHARS = 200
+REDACTED_INPUT_VALUE = "[REDACTED]"
+SENSITIVE_INPUT_KEYS = frozenset({
+    "accesstoken",
+    "apikey",
+    "authorization",
+    "clientsecret",
+    "cookie",
+    "password",
+    "passwd",
+    "privatekey",
+    "refreshtoken",
+    "secret",
+    "token",
+})
+FILE_CONTENT_FIELDS = {
+    "edit_file": frozenset({"new_string", "old_string"}),
+    "write_file": frozenset({"content"}),
+}
 
 
 def _utc_now() -> datetime:
@@ -27,15 +46,44 @@ def _preview_value(value: Any) -> Any:
             return value[:MAX_PREVIEW_VALUE_CHARS] + "... (truncated)"
         return value
     if isinstance(value, dict):
-        return {str(k): _preview_value(v) for k, v in value.items()}
+        return _preview_mapping(value)
     if isinstance(value, list):
         return [_preview_value(v) for v in value[:20]]
     return value
 
 
-def build_input_preview(params: dict[str, Any]) -> dict[str, Any]:
+def _preview_mapping(values: dict[Any, Any]) -> dict[str, Any]:
+    return {
+        str(key): REDACTED_INPUT_VALUE if _is_sensitive_key(key) else _preview_value(value)
+        for key, value in values.items()
+    }
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    normalized = "".join(character for character in str(key).lower() if character.isalnum())
+    return normalized in SENSITIVE_INPUT_KEYS
+
+
+def _summarize_content(content: str) -> dict[str, Any]:
+    return {
+        "chars": len(content),
+        "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+    }
+
+
+def build_input_preview(params: dict[str, Any], tool_name: str = "") -> dict[str, Any]:
     """Build a bounded preview of tool input without recording full content."""
-    return {str(key): _preview_value(value) for key, value in params.items()}
+    content_fields = FILE_CONTENT_FIELDS.get(tool_name, frozenset())
+    preview: dict[str, Any] = {}
+    for key, value in params.items():
+        field_name = str(key)
+        if _is_sensitive_key(field_name):
+            preview[field_name] = REDACTED_INPUT_VALUE
+        elif field_name in content_fields and isinstance(value, str):
+            preview[field_name] = _summarize_content(value)
+        else:
+            preview[field_name] = _preview_value(value)
+    return preview
 
 
 class TraceRecorder:
@@ -88,7 +136,7 @@ class TraceRecorder:
             "status": "error" if result.is_error else "ok",
             "error_type": result.error_type,
             "duration_ms": duration_ms,
-            "input_preview": build_input_preview(params),
+            "input_preview": build_input_preview(params, tool_name=tool_name),
             "output_chars": len(result.output),
             "compressed": bool(result.metadata.get("compressed")),
             "original_output_chars": result.metadata.get("original_output_chars"),

@@ -211,6 +211,70 @@ class TestTracing(unittest.TestCase):
         self.assertIn("truncated", preview["content"])
         self.assertLess(len(preview["content"]), 230)
 
+    def test_input_preview_redacts_sensitive_fields_recursively(self):
+        preview = build_input_preview({
+            "api_key": "sk-secret",
+            "headers": {"Authorization": "Bearer hidden"},
+            "items": [{"password": "hidden"}, "visible"],
+            "path": "README.md",
+        })
+
+        self.assertEqual(preview["api_key"], "[REDACTED]")
+        self.assertEqual(preview["headers"]["Authorization"], "[REDACTED]")
+        self.assertEqual(preview["items"][0]["password"], "[REDACTED]")
+        self.assertEqual(preview["items"][1], "visible")
+        self.assertEqual(preview["path"], "README.md")
+
+    def test_record_tool_call_summarizes_file_mutation_content(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            recorder = TraceRecorder(trace_dir=tmpdir)
+            run_id = recorder.start_run()
+            timestamp = datetime(2026, 8, 23, 8, 0, 0, tzinfo=timezone.utc)
+            calls = [
+                (
+                    "write_file",
+                    {"path": "config.txt", "content": "password=hidden\n"},
+                ),
+                (
+                    "edit_file",
+                    {
+                        "path": "config.txt",
+                        "old_string": "before secret\n",
+                        "new_string": "after secret\n",
+                    },
+                ),
+            ]
+            for index, (tool_name, params) in enumerate(calls, start=1):
+                recorder.record_tool_call(
+                    run_id=run_id,
+                    turn=index,
+                    tool_call_id=f"toolu_{index}",
+                    tool_name=tool_name,
+                    params=params,
+                    result=ToolResult(output="ok"),
+                    started_at=timestamp,
+                    ended_at=timestamp,
+                )
+
+            trace_file = next(Path(tmpdir).glob("*.jsonl"))
+            events = [
+                json.loads(line)
+                for line in trace_file.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(events[0]["input_preview"]["content"], {
+            "chars": 16,
+            "sha256": "275954bad0fc8846387c7374b6b1f9771a24cf47f039b42276b19104686c3847",
+        })
+        self.assertEqual(events[1]["input_preview"]["old_string"], {
+            "chars": 14,
+            "sha256": "2b1ece0965017c8465125165a739b974f5f73b17a7f0c43c0598cc7f165333c5",
+        })
+        self.assertEqual(events[1]["input_preview"]["new_string"], {
+            "chars": 13,
+            "sha256": "bc89c6e4773dd6b5253ab9387fa5750b7669c47edccd8d31c0476b310d983897",
+        })
+
     def test_record_tool_call_writes_jsonl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             recorder = TraceRecorder(trace_dir=tmpdir)

@@ -233,7 +233,8 @@ started_at
 ended_at
 ```
 
-input 只记录摘要，不记录完整大内容，避免日志过大或泄露过多上下文。
+`input_preview` 会递归脱敏 token、password、authorization 等敏感字段。`write_file.content`
+以及 `edit_file.old_string/new_string` 只记录字符数和 SHA-256，不持久化原文；其他较长输入仍按长度截断。
 
 价值：
 
