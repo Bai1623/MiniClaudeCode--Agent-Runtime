@@ -215,6 +215,7 @@ tool_result_snippet_lines = 80
 每条 trace 记录包含：
 
 ```text
+schema_version
 run_id
 turn
 tool_call_id
@@ -232,6 +233,8 @@ compression_strategy
 started_at
 ended_at
 ```
+
+工具调用事件由 `build_tool_call_event(...)` 统一构建，当前 `schema_version` 为 `1`，生产端与消费端可以据此识别字段契约。
 
 `input_preview` 会递归脱敏 token、password、authorization 等敏感字段。`write_file.content`
 以及 `edit_file.old_string/new_string` 只记录字符数和 SHA-256，不持久化原文；其他较长输入仍按长度截断。

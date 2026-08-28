@@ -12,6 +12,7 @@ from typing import Any
 from miniclaudecode.tools.base import ToolResult
 
 MAX_PREVIEW_VALUE_CHARS = 200
+TRACE_SCHEMA_VERSION = 1
 REDACTED_INPUT_VALUE = "[REDACTED]"
 SENSITIVE_INPUT_KEYS = frozenset({
     "accesstoken",
@@ -86,6 +87,40 @@ def build_input_preview(params: dict[str, Any], tool_name: str = "") -> dict[str
     return preview
 
 
+def build_tool_call_event(
+    *,
+    run_id: str,
+    turn: int,
+    tool_call_id: str,
+    tool_name: str,
+    params: dict[str, Any],
+    result: ToolResult,
+    started_at: datetime,
+    ended_at: datetime,
+) -> dict[str, Any]:
+    """Build one versioned tool-call trace event."""
+    duration_ms = int((ended_at - started_at).total_seconds() * 1000)
+    return {
+        "schema_version": TRACE_SCHEMA_VERSION,
+        "run_id": run_id,
+        "turn": turn,
+        "tool_call_id": tool_call_id,
+        "tool_name": tool_name,
+        "status": "error" if result.is_error else "ok",
+        "error_type": result.error_type,
+        "duration_ms": duration_ms,
+        "input_preview": build_input_preview(params, tool_name=tool_name),
+        "output_chars": len(result.output),
+        "compressed": bool(result.metadata.get("compressed")),
+        "original_output_chars": result.metadata.get("original_output_chars"),
+        "kept_snippet_lines": result.metadata.get("kept_snippet_lines"),
+        "snippet_truncated": result.metadata.get("snippet_truncated"),
+        "compression_strategy": result.metadata.get("compression_strategy"),
+        "started_at": _format_timestamp(started_at),
+        "ended_at": _format_timestamp(ended_at),
+    }
+
+
 class TraceRecorder:
     """Append JSONL trace events for tool calls."""
 
@@ -127,25 +162,16 @@ class TraceRecorder:
             self.trace_dir.mkdir(parents=True, exist_ok=True)
             self.trace_file = self.trace_dir / f"{run_id}.jsonl"
 
-        duration_ms = int((ended_at - started_at).total_seconds() * 1000)
-        event = {
-            "run_id": run_id,
-            "turn": turn,
-            "tool_call_id": tool_call_id,
-            "tool_name": tool_name,
-            "status": "error" if result.is_error else "ok",
-            "error_type": result.error_type,
-            "duration_ms": duration_ms,
-            "input_preview": build_input_preview(params, tool_name=tool_name),
-            "output_chars": len(result.output),
-            "compressed": bool(result.metadata.get("compressed")),
-            "original_output_chars": result.metadata.get("original_output_chars"),
-            "kept_snippet_lines": result.metadata.get("kept_snippet_lines"),
-            "snippet_truncated": result.metadata.get("snippet_truncated"),
-            "compression_strategy": result.metadata.get("compression_strategy"),
-            "started_at": _format_timestamp(started_at),
-            "ended_at": _format_timestamp(ended_at),
-        }
+        event = build_tool_call_event(
+            run_id=run_id,
+            turn=turn,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            params=params,
+            result=result,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
 
         with self.trace_file.open("a", encoding="utf-8") as file:
             file.write(json.dumps(event, ensure_ascii=False) + "\n")

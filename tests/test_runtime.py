@@ -16,7 +16,11 @@ from miniclaudecode.permissions import PermissionGate
 from miniclaudecode.runtime.compression import compress_tool_result
 from miniclaudecode.runtime.schema_validator import validate_tool_input
 from miniclaudecode.runtime.tool_runtime import ToolExecution, ToolRuntime
-from miniclaudecode.runtime.tracing import TraceRecorder, build_input_preview
+from miniclaudecode.runtime.tracing import (
+    TraceRecorder,
+    build_input_preview,
+    build_tool_call_event,
+)
 from miniclaudecode.tools.base import Tool, ToolRegistry, ToolResult
 from miniclaudecode.tools.file_read import FileReadTool
 from miniclaudecode.tools.file_write import FileWriteTool
@@ -205,6 +209,24 @@ class TestCompression(unittest.TestCase):
 
 
 class TestTracing(unittest.TestCase):
+    def test_build_tool_call_event_owns_versioned_trace_schema(self):
+        timestamp = datetime(2026, 8, 28, 9, 46, 0, tzinfo=timezone.utc)
+        event = build_tool_call_event(
+            run_id="run_test",
+            turn=2,
+            tool_call_id="toolu_test",
+            tool_name="grep",
+            params={"pattern": "TraceRecorder", "path": "."},
+            result=ToolResult(output="match"),
+            started_at=timestamp,
+            ended_at=timestamp,
+        )
+
+        self.assertEqual(event["schema_version"], 1)
+        self.assertEqual(event["run_id"], "run_test")
+        self.assertEqual(event["tool_name"], "grep")
+        self.assertEqual(event["input_preview"]["pattern"], "TraceRecorder")
+
     def test_input_preview_truncates_long_values(self):
         preview = build_input_preview({"content": "x" * 250, "path": "file.txt"})
         self.assertEqual(preview["path"], "file.txt")
@@ -299,6 +321,7 @@ class TestTracing(unittest.TestCase):
             self.assertEqual(len(trace_files), 1)
             event = json.loads(trace_files[0].read_text(encoding="utf-8").strip())
 
+        self.assertEqual(event["schema_version"], 1)
         self.assertEqual(event["run_id"], run_id)
         self.assertEqual(event["tool_name"], "grep")
         self.assertEqual(event["status"], "ok")
