@@ -226,6 +226,7 @@ duration_ms
 input_preview
 output_chars
 compressed
+retried
 original_output_chars
 kept_snippet_lines
 snippet_truncated
@@ -238,6 +239,9 @@ ended_at
 
 `input_preview` 会递归脱敏 token、password、authorization 等敏感字段。`write_file.content`
 以及 `edit_file.old_string/new_string` 只记录字符数和 SHA-256，不持久化原文；其他较长输入仍按长度截断。
+
+`TraceSummary.from_events(...)` 提供独立的运行统计，包含调用数、错误类型、重试数、压缩率、
+nearest-rank P50/P95 耗时和最慢的三次工具调用。该摘要当前不负责写文件或渲染 Harness 报告。
 
 价值：
 

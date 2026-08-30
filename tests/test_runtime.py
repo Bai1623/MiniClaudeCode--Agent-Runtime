@@ -227,6 +227,21 @@ class TestTracing(unittest.TestCase):
         self.assertEqual(event["tool_name"], "grep")
         self.assertEqual(event["input_preview"]["pattern"], "TraceRecorder")
 
+    def test_build_tool_call_event_records_retry_metadata(self):
+        timestamp = datetime(2026, 8, 30, 9, 0, 0, tzinfo=timezone.utc)
+        event = build_tool_call_event(
+            run_id="run_test",
+            turn=1,
+            tool_call_id="toolu_test",
+            tool_name="grep",
+            params={},
+            result=ToolResult(output="match", metadata={"retried": True}),
+            started_at=timestamp,
+            ended_at=timestamp,
+        )
+
+        self.assertIs(event.get("retried"), True)
+
     def test_input_preview_truncates_long_values(self):
         preview = build_input_preview({"content": "x" * 250, "path": "file.txt"})
         self.assertEqual(preview["path"], "file.txt")

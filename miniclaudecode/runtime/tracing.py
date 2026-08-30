@@ -112,6 +112,7 @@ def build_tool_call_event(
         "input_preview": build_input_preview(params, tool_name=tool_name),
         "output_chars": len(result.output),
         "compressed": bool(result.metadata.get("compressed")),
+        "retried": bool(result.metadata.get("retried")),
         "original_output_chars": result.metadata.get("original_output_chars"),
         "kept_snippet_lines": result.metadata.get("kept_snippet_lines"),
         "snippet_truncated": result.metadata.get("snippet_truncated"),
