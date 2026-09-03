@@ -20,6 +20,9 @@ class ModelConfig:
     model: str = "claude-sonnet-4-20250514"
     max_turns: int = 30
     max_context_messages: int = 100
+    input_cost_per_million_usd: float | None = None
+    output_cost_per_million_usd: float | None = None
+    cache_read_cost_per_million_usd: float | None = None
 
 
 @dataclass
@@ -250,10 +253,19 @@ def load_config(
 def _read_config_file(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(f"Config file not found: {path}")
+    text = path.read_text(encoding="utf-8")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON config file: {path}") from exc
+        if path.suffix.lower() == ".toml":
+            try:
+                import tomllib
+            except ImportError:  # Python 3.9-3.10
+                import tomli as tomllib
+            data = tomllib.loads(text)
+        else:
+            data = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        format_name = "TOML" if path.suffix.lower() == ".toml" else "JSON"
+        raise ValueError(f"Invalid {format_name} config file: {path}") from exc
     if not isinstance(data, dict):
         raise ValueError(f"Config file must contain a JSON object: {path}")
     return data
@@ -274,6 +286,9 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         "MINICLAUDECODE_WORKSPACE_ROOT": "safety.workspace_root",
         "MINICLAUDECODE_HARNESS_RUNS_DIR": "harness.runs_dir",
         "MINICLAUDECODE_MAX_REPAIR_ROUNDS": "harness.max_repair_rounds",
+        "MINICLAUDECODE_INPUT_COST_PER_MILLION_USD": "model.input_cost_per_million_usd",
+        "MINICLAUDECODE_OUTPUT_COST_PER_MILLION_USD": "model.output_cost_per_million_usd",
+        "MINICLAUDECODE_CACHE_READ_COST_PER_MILLION_USD": "model.cache_read_cost_per_million_usd",
     }
     for env_name, dotted_key in scalar_env.items():
         if env_name in env:
@@ -309,6 +324,12 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.model.max_turns = _parse_int(key, value)
     elif key in {"max_context_messages", "model.max_context_messages"}:
         config.model.max_context_messages = _parse_int(key, value)
+    elif key == "model.input_cost_per_million_usd":
+        config.model.input_cost_per_million_usd = _parse_optional_float(key, value)
+    elif key == "model.output_cost_per_million_usd":
+        config.model.output_cost_per_million_usd = _parse_optional_float(key, value)
+    elif key == "model.cache_read_cost_per_million_usd":
+        config.model.cache_read_cost_per_million_usd = _parse_optional_float(key, value)
     elif key in {"max_output_chars", "tool_runtime.max_output_chars"}:
         config.tool_runtime.max_output_chars = _parse_int(key, value)
     elif key in {"max_tool_result_chars", "tool_runtime.max_tool_result_chars"}:
@@ -348,6 +369,15 @@ def _parse_int(key: str, value: Any) -> int:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Config value '{key}' must be an integer.") from exc
+
+
+def _parse_optional_float(key: str, value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Config value '{key}' must be a number.") from exc
 
 
 def _parse_string_list(key: str, value: Any) -> list[str]:

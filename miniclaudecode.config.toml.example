@@ -1,0 +1,22 @@
+[model]
+# Set pricing only when you need local estimated-cost reporting. Values are USD / million tokens.
+model = "claude-sonnet-4-20250514"
+max_turns = 30
+max_context_messages = 100
+# input_cost_per_million_usd = 3.0
+# output_cost_per_million_usd = 15.0
+# cache_read_cost_per_million_usd = 0.3
+
+[tool_runtime]
+max_tool_result_chars = 12000
+tool_result_head_chars = 8000
+tool_result_tail_chars = 4000
+tool_result_snippet_lines = 80
+
+[safety]
+workspace_root = "."
+permission_mode = "ask"
+
+[harness]
+runs_dir = ".miniclaudecode/runs"
+max_repair_rounds = 1

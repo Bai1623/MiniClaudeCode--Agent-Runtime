@@ -218,11 +218,13 @@ python -m miniclaudecode "帮我查看当前目录有哪些 Python 文件"
 python -m miniclaudecode --model claude-sonnet-4-20250514 --mode ask --max-turns 30 chat
 ```
 
-指定配置文件：
+指定 JSON 或 TOML 配置文件（优先级：默认值 < 配置文件 < 环境变量 < CLI 参数）：
 
 ```bash
-python -m miniclaudecode --config miniclaudecode.config.json "查看项目状态"
+python -m miniclaudecode --config miniclaudecode.config.toml "查看项目状态"
 ```
+
+可从 `miniclaudecode.config.toml.example` 复制一份配置。模型价格字段是可选的；配置后，每次 Harness run 会把 token、耗时、stop reason 和本地估算成本写入 `traces/model_calls.jsonl`，但不会保存 prompt、模型文本或 API Key。
 
 交互模式命令：
 

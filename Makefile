@@ -1,7 +1,13 @@
-PYTHON ?= python3
 VENV ?= .venv
+PYTHON ?= python3
+
+ifeq ($(OS),Windows_NT)
+BIN := $(VENV)/Scripts
+PY := $(BIN)/python.exe
+else
 BIN := $(VENV)/bin
 PY := $(BIN)/python
+endif
 
 .PHONY: install test e2e coverage lint format typecheck build check clean
 
@@ -36,4 +42,4 @@ build:
 check: lint typecheck coverage build
 
 clean:
-	rm -rf build dist .coverage .mypy_cache .ruff_cache
+	$(PY) -c "from pathlib import Path; import shutil; [shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True) for p in map(Path, ['build', 'dist', '.coverage', '.mypy_cache', '.ruff_cache'])]"

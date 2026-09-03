@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, TextIO, cast
 
 from .config import Config
 from .context import ConversationContext
 from .permissions import PermissionGate
+from .runtime.model_tracing import ModelCallRecorder
 from .runtime.tool_runtime import ToolRuntime
 from .runtime.tracing import TraceRecorder
 from .system_prompt import build_system_prompt
@@ -62,6 +64,7 @@ class AgentLoop:
         client: Any | None = None,
         output: TextIO | None = None,
         tracer: TraceRecorder | None = None,
+        model_tracer: ModelCallRecorder | None = None,
         tool_runtime: ToolRuntime | None = None,
     ) -> None:
         self.config = config or Config()
@@ -71,6 +74,7 @@ class AgentLoop:
         self.client = client or _default_client()
         self.output = output or sys.stdout
         self.tracer = tracer or TraceRecorder()
+        self.model_tracer = model_tracer or ModelCallRecorder(enabled=self.tracer.enabled)
         self.tool_runtime = tool_runtime or ToolRuntime(
             registry=self.registry,
             permission_gate=self.permission_gate,
@@ -88,6 +92,7 @@ class AgentLoop:
     def set_trace_dir(self, trace_dir: str) -> None:
         """Route subsequent tool traces to the provided directory."""
         self.tracer.set_trace_dir(trace_dir)
+        self.model_tracer.set_trace_dir(trace_dir)
 
     def run(self, user_message: str) -> str:
         """Process a user message through the agent loop, returning the final text response."""
@@ -102,7 +107,7 @@ class AgentLoop:
 
         for turn in range(1, self.config.max_turns + 1):
             turns_completed = turn
-            response = self._call_api()
+            response = self._call_api(run_id=run_id, turn=turn)
             tool_calls, text_parts = self._parse_response(response)
 
             if text_parts:
@@ -133,8 +138,9 @@ class AgentLoop:
             reached_max_turns=False,
         )
 
-    def _call_api(self) -> Any:
+    def _call_api(self, *, run_id: str, turn: int) -> Any:
         """Call the Anthropic API with streaming output enabled."""
+        started_at = datetime.now(timezone.utc)
         with self.client.messages.stream(
             model=self.config.model.model,
             max_tokens=8192,
@@ -146,7 +152,19 @@ class AgentLoop:
                 if event.type == "content_block_delta" and event.delta.type == "text_delta":
                     self.output.write(event.delta.text)
                     self.output.flush()
-            return stream.get_final_message()
+            response = stream.get_final_message()
+        self.model_tracer.record(
+            run_id=run_id,
+            turn=turn,
+            model=self.config.model.model,
+            response=response,
+            started_at=started_at,
+            ended_at=datetime.now(timezone.utc),
+            input_cost_per_million_usd=self.config.model.input_cost_per_million_usd,
+            output_cost_per_million_usd=self.config.model.output_cost_per_million_usd,
+            cache_read_cost_per_million_usd=self.config.model.cache_read_cost_per_million_usd,
+        )
+        return response
 
     def _parse_response(self, response: Any) -> tuple[list[dict], list[str]]:
         """Extract tool_use blocks and text blocks from the API response."""

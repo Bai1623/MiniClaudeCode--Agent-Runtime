@@ -139,6 +139,22 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.safety.permission_mode, PermissionMode.ASK)
         self.assertEqual(config.harness.max_repair_rounds, 4)
 
+    def test_loads_toml_config_and_optional_model_pricing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "config.toml"
+            path.write_text(
+                "[model]\nmodel = 'toml-model'\ninput_cost_per_million_usd = 3.0\n"
+                "output_cost_per_million_usd = 15.0\n\n[safety]\npermission_mode = 'plan'\n",
+                encoding="utf-8",
+            )
+
+            config = load_config(path, env={})
+
+        self.assertEqual(config.model.model, "toml-model")
+        self.assertEqual(config.model.input_cost_per_million_usd, 3.0)
+        self.assertEqual(config.model.output_cost_per_million_usd, 15.0)
+        self.assertEqual(config.permission_mode, PermissionMode.PLAN)
+
     def test_env_lists_accept_comma_separated_values(self):
         config = load_config(
             env={

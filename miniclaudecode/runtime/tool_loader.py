@@ -60,7 +60,7 @@ def discover_tool_specs(
         for _, obj in inspect.getmembers(module, inspect.isclass):
             if not _is_concrete_tool_class(obj, module.__name__):
                 continue
-            tool = _instantiate_tool(obj, config)
+            tool = _instantiate_tool(cast(type[Tool], obj), config)
             enabled = _is_enabled(tool.name, enabled_filter, disabled_filter)
             specs.append(
                 ToolSpec(

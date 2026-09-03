@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from miniclaudecode.harness.artifacts import ArtifactStore, RunArtifacts
+from miniclaudecode.harness.artifacts import ArtifactStore, RunArtifacts, build_run_summary
 
 
 class TestRunArtifacts(unittest.TestCase):
@@ -19,6 +19,7 @@ class TestRunArtifacts(unittest.TestCase):
         self.assertEqual(artifacts.plan_path, Path("runs") / "run-1" / "plan.json")
         self.assertEqual(artifacts.events_path, Path("runs") / "run-1" / "events.jsonl")
         self.assertEqual(artifacts.final_report_path, Path("runs") / "run-1" / "final_report.md")
+        self.assertEqual(artifacts.run_summary_path, Path("runs") / "run-1" / "run_summary.json")
         self.assertEqual(artifacts.tasks_dir, Path("runs") / "run-1" / "tasks")
         self.assertEqual(
             artifacts.evaluator_reports_dir,
@@ -170,6 +171,29 @@ class TestArtifactStore(unittest.TestCase):
 
             self.assertEqual(path, artifacts.final_report_path)
             self.assertEqual(path.read_text(encoding="utf-8"), "# Final Report\n\nAll checks passed.")
+
+    def test_build_and_write_run_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            artifacts = store.create_run()
+            (artifacts.traces_dir / "tools.jsonl").write_text(
+                json.dumps({"turn": 1, "tool_name": "grep", "status": "ok", "duration_ms": 10,
+                            "compressed": False, "retried": False}) + "\n",
+                encoding="utf-8",
+            )
+            artifacts.model_calls_path.write_text(
+                json.dumps({"duration_ms": 20, "input_tokens": 5, "output_tokens": 3,
+                            "cache_read_input_tokens": 1, "stop_reason": "end_turn",
+                            "estimated_cost_usd": 0.01}) + "\n",
+                encoding="utf-8",
+            )
+            summary = build_run_summary(artifacts, status="passed")
+            path = store.write_run_summary(artifacts, summary)
+
+            self.assertEqual(path, artifacts.run_summary_path)
+            self.assertEqual(summary["tool"]["tool_calls"], 1)
+            self.assertEqual(summary["model"]["input_tokens"], 5)
+            self.assertEqual(summary["model"]["estimated_cost_usd"], 0.01)
 
 
 if __name__ == "__main__":

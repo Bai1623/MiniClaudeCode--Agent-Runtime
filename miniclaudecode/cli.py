@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, overload
@@ -55,7 +55,7 @@ class MiniArgumentParser(argparse.ArgumentParser):
     @overload
     def parse_args(
         self,
-        args: Sequence[str] | None = ...,
+        args: Iterable[str] | None = ...,
         namespace: None = ...,
     ) -> argparse.Namespace:
         ...
@@ -63,7 +63,7 @@ class MiniArgumentParser(argparse.ArgumentParser):
     @overload
     def parse_args(
         self,
-        args: Sequence[str] | None,
+        args: Iterable[str] | None,
         namespace: _N,
     ) -> _N:
         ...
@@ -78,10 +78,10 @@ class MiniArgumentParser(argparse.ArgumentParser):
 
     def parse_args(
         self,
-        args: Sequence[str] | None = None,
+        args: Iterable[str] | None = None,
         namespace: Any = None,
     ) -> Any:
-        parsed = super().parse_args(args, namespace)
+        parsed = super().parse_args(None if args is None else list(args), namespace)
         return normalize_cli_args(parsed)
 
 
@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         default=None,
-        help="Path to a JSON config file. CLI flags override file and environment values.",
+        help="Path to a JSON or TOML config file. CLI flags override file and environment values.",
     )
     parser.add_argument(
         "--model", default=None,

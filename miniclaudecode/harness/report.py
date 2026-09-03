@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .artifacts import ArtifactStore
+from .artifacts import ArtifactStore, build_run_summary, read_jsonl
 from .task_harness import HarnessRunResult
 
 if TYPE_CHECKING:
@@ -16,7 +15,12 @@ if TYPE_CHECKING:
 class FinalReportGenerator:
     """Renders a Markdown report from a completed harness run."""
 
-    def render(self, result: HarnessRunResult, git_report: GitWorkflowReport | None = None) -> str:
+    def render(
+        self,
+        result: HarnessRunResult,
+        git_report: GitWorkflowReport | None = None,
+        run_summary: dict | None = None,
+    ) -> str:
         lines = [
             "# Harness Run Report",
             "",
@@ -69,7 +73,7 @@ class FinalReportGenerator:
             lines.append(f"Memory: {result.memory_path}")
         lines.append("")
 
-        lines.extend(_render_audit_trail(result, git_report))
+        lines.extend(_render_audit_trail(result, git_report, run_summary or build_run_summary(result.artifacts, status=result.status)))
 
         if git_report is not None:
             lines.extend([
@@ -86,13 +90,19 @@ class FinalReportGenerator:
         result: HarnessRunResult,
         git_report: GitWorkflowReport | None = None,
     ) -> str:
-        report = self.render(result, git_report=git_report)
+        summary = build_run_summary(result.artifacts, status=result.status)
+        store.write_run_summary(result.artifacts, summary)
+        report = self.render(result, git_report=git_report, run_summary=summary)
         store.write_final_report(result.artifacts, report)
         return report
 
 
-def _render_audit_trail(result: HarnessRunResult, git_report: GitWorkflowReport | None) -> list[str]:
-    events = _read_jsonl(result.artifacts.events_path)
+def _render_audit_trail(
+    result: HarnessRunResult,
+    git_report: GitWorkflowReport | None,
+    summary: dict,
+) -> list[str]:
+    events = read_jsonl(result.artifacts.events_path)
     traces = _read_trace_events(result.artifacts.traces_dir)
     lines = [
         "## Audit Trail",
@@ -100,7 +110,7 @@ def _render_audit_trail(result: HarnessRunResult, git_report: GitWorkflowReport 
         f"Events recorded: {len(events)}",
         f"Tool calls traced: {len(traces)}",
     ]
-    lines.extend(_render_compression_summary(traces))
+    lines.extend(_render_summary_metrics(summary))
     lines.append("")
 
     repair_events = [event for event in events if event.get("type") == "repair_started"]
@@ -160,24 +170,19 @@ def _render_audit_trail(result: HarnessRunResult, git_report: GitWorkflowReport 
     return lines
 
 
-def _render_compression_summary(traces: list[dict]) -> list[str]:
-    compressed_traces = [trace for trace in traces if trace.get("compressed")]
-    if not compressed_traces:
-        return ["Compressed tool calls: 0"]
-
-    strategies: dict[str, int] = {}
-    snippet_truncated = 0
-    for trace in compressed_traces:
-        strategy = str(trace.get("compression_strategy") or "unknown")
-        strategies[strategy] = strategies.get(strategy, 0) + 1
-        if trace.get("snippet_truncated"):
-            snippet_truncated += 1
-
-    strategy_summary = ", ".join(f"{name}={count}" for name, count in sorted(strategies.items()))
+def _render_summary_metrics(summary: dict) -> list[str]:
+    tool = summary["tool"]
+    model = summary["model"]
     return [
-        f"Compressed tool calls: {len(compressed_traces)}",
-        f"Compression strategies: {strategy_summary}",
-        f"Snippet-truncated calls: {snippet_truncated}",
+        f"Compressed tool calls: {tool['compressed_calls']}",
+        "Compression strategies: " + ", ".join(
+            f"{name}={count}" for name, count in tool["compression_strategies"].items()
+        ),
+        f"Snippet-truncated calls: {tool['snippet_truncated_calls']}",
+        f"Tool latency: P50={tool['p50_duration_ms']} ms, P95={tool['p95_duration_ms']} ms",
+        f"Model calls: {model['calls']}",
+        f"Model tokens: input={model['input_tokens']}, output={model['output_tokens']}, cache_read={model['cache_read_input_tokens']}",
+        f"Estimated model cost (USD): {model['estimated_cost_usd'] if model['estimated_cost_usd'] is not None else 'not configured'}",
     ]
 
 
@@ -193,19 +198,6 @@ def _read_trace_events(traces_dir: Path) -> list[dict]:
     if not traces_dir.is_dir():
         return events
     for path in sorted(traces_dir.glob("*.jsonl")):
-        events.extend(_read_jsonl(path))
+        if path.name != "model_calls.jsonl":
+            events.extend(read_jsonl(path))
     return events
-
-
-def _read_jsonl(path: Path) -> list[dict]:
-    if not path.is_file():
-        return []
-    records: list[dict] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(record, dict):
-            records.append(record)
-    return records
