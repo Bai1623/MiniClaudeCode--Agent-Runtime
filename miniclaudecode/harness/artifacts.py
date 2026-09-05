@@ -44,6 +44,10 @@ class RunArtifacts:
         return self.root / "run_summary.json"
 
     @property
+    def state_path(self) -> Path:
+        return self.root / "run_state.json"
+
+    @property
     def model_calls_path(self) -> Path:
         return self.traces_dir / "model_calls.jsonl"
 
@@ -150,6 +154,24 @@ class ArtifactStore:
             encoding="utf-8",
         )
         return artifacts.run_summary_path
+
+    def write_state(self, artifacts: RunArtifacts, state: dict[str, Any]) -> Path:
+        """Atomically persist state so an interruption never leaves partial JSON."""
+        temporary_path = artifacts.state_path.with_suffix(".json.tmp")
+        temporary_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(artifacts.state_path)
+        return artifacts.state_path
+
+    def read_state(self, artifacts: RunArtifacts) -> dict[str, Any]:
+        if not artifacts.state_path.is_file():
+            raise FileNotFoundError(f"Harness state not found: {artifacts.state_path}")
+        state = json.loads(artifacts.state_path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            raise ValueError(f"Harness state must be a JSON object: {artifacts.state_path}")
+        return state
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:

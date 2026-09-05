@@ -117,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the prompt through the Planner Executor Evaluator harness.",
     )
     parser.add_argument(
+        "--resume",
+        metavar="RUN_ID",
+        help="Resume an interrupted harness run from its first unfinished task.",
+    )
+    parser.add_argument(
         "--git-summary",
         action="store_true",
         help="Analyze the current git workflow state and print a Markdown report.",
@@ -383,7 +388,10 @@ def default_harness_tasks(prompt: str, task_titles: list[str] | None) -> list[Ta
 
 
 def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
-    if not args.prompt:
+    if args.resume and args.run_harness:
+        print("Error: use either --run-harness or --resume, not both.", file=sys.stderr)
+        return 2
+    if not args.resume and not args.prompt:
         print("Error: --run-harness requires a prompt.", file=sys.stderr)
         return 2
 
@@ -399,12 +407,15 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
         memory_store=MemoryStore(),
     )
     try:
-        result = harness.run(
-            request=args.prompt,
-            goal=args.prompt,
-            spec=args.harness_spec or "",
-            tasks=default_harness_tasks(args.prompt, args.harness_task),
-        )
+        if args.resume:
+            result = harness.resume(args.resume)
+        else:
+            result = harness.run(
+                request=args.prompt,
+                goal=args.prompt,
+                spec=args.harness_spec or "",
+                tasks=default_harness_tasks(args.prompt, args.harness_task),
+            )
         git_report = build_git_workflow_report(args)
         FinalReportGenerator().write(store, result, git_report=git_report)
     except Exception as exc:
@@ -552,7 +563,8 @@ def _main(argv: list[str] | None = None) -> int:
         list_harness_runs(ArtifactStore(base_dir=config.harness.runs_dir))
         return 0
 
-    if args.run_harness:
+    if args.run_harness or args.resume:
+        require_anthropic_api_key()
         return run_harness(args, config=config)
 
     if args.git_summary:

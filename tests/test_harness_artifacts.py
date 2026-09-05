@@ -20,6 +20,7 @@ class TestRunArtifacts(unittest.TestCase):
         self.assertEqual(artifacts.events_path, Path("runs") / "run-1" / "events.jsonl")
         self.assertEqual(artifacts.final_report_path, Path("runs") / "run-1" / "final_report.md")
         self.assertEqual(artifacts.run_summary_path, Path("runs") / "run-1" / "run_summary.json")
+        self.assertEqual(artifacts.state_path, Path("runs") / "run-1" / "run_state.json")
         self.assertEqual(artifacts.tasks_dir, Path("runs") / "run-1" / "tasks")
         self.assertEqual(
             artifacts.evaluator_reports_dir,
@@ -171,6 +172,16 @@ class TestArtifactStore(unittest.TestCase):
 
             self.assertEqual(path, artifacts.final_report_path)
             self.assertEqual(path.read_text(encoding="utf-8"), "# Final Report\n\nAll checks passed.")
+
+    def test_write_and_read_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            artifacts = store.create_run()
+            state = {"schema_version": 1, "run_id": artifacts.run_id, "status": "planned"}
+            path = store.write_state(artifacts, state)
+
+            self.assertEqual(path, artifacts.state_path)
+            self.assertEqual(store.read_state(artifacts), state)
 
     def test_build_and_write_run_summary(self):
         with tempfile.TemporaryDirectory() as tmpdir:

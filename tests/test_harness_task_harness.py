@@ -113,7 +113,8 @@ class TestTaskHarness(unittest.TestCase):
         self.assertTrue(request_exists)
         self.assertTrue(plan_exists)
         self.assertEqual(events[0]["type"], "run_created")
-        self.assertEqual(events[-1], {"type": "run_finished", "status": "passed"})
+        self.assertIn({"type": "run_finished", "status": "passed"}, events)
+        self.assertEqual(events[-1]["to"], "succeeded")
         self.assertEqual(executor.trace_dirs, [str(result.artifacts.traces_dir)])
 
     def test_run_repairs_failed_task_once(self):
@@ -184,7 +185,52 @@ class TestTaskHarness(unittest.TestCase):
         self.assertIsNotNone(result.memory_path)
         self.assertEqual(memory_count, 1)
         self.assertEqual(memory_id, f"harness-{result.artifacts.run_id}")
-        self.assertEqual(events[-1]["type"], "memory_written")
+        self.assertEqual(events[-2]["type"], "memory_written")
+        self.assertEqual(events[-1]["to"], "succeeded")
+
+    def test_resume_restarts_only_the_interrupted_task(self):
+        class InterruptingExecutor(FakeExecutor):
+            def execute_task(self, store, artifacts, task, feedback=""):
+                if task.id == "task-002":
+                    raise RuntimeError("simulated interruption")
+                return super().execute_task(store, artifacts, task, feedback)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            interrupted = TaskHarness(
+                store=store,
+                planner=Planner(),
+                executor=InterruptingExecutor(),
+                evaluator=FakeEvaluator(["passed"]),
+            )
+            with self.assertRaisesRegex(RuntimeError, "simulated interruption"):
+                interrupted.run(
+                    request="build two tasks",
+                    goal="Build two tasks",
+                    tasks=[{"title": "First test"}, {"title": "Second test"}],
+                )
+
+            artifacts = store.list_runs()[0]
+            state = store.read_state(artifacts)
+            self.assertEqual(state["status"], "executing")
+            self.assertEqual(state["next_task_index"], 1)
+            self.assertEqual(state["completed_task_ids"], ["task-001"])
+
+            resumed = TaskHarness(
+                store=store,
+                planner=Planner(),
+                executor=FakeExecutor(),
+                evaluator=FakeEvaluator(["passed"]),
+            ).resume(artifacts.run_id)
+            events = [
+                json.loads(line)
+                for line in artifacts.events_path.read_text(encoding="utf-8").splitlines()
+            ]
+
+            self.assertEqual(resumed.status, "passed")
+            self.assertEqual([result.task.id for result in resumed.task_results], ["task-001", "task-002"])
+            self.assertIn({"type": "run_resumed", "run_id": artifacts.run_id, "next_task_index": 1}, events)
+            self.assertEqual(store.read_state(artifacts)["status"], "succeeded")
 
 
 if __name__ == "__main__":
