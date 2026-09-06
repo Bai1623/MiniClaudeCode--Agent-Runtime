@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from .config import Config, PermissionMode, load_config
 from .errors import ErrorPresenter, MissingApiKeyError
+from .evals import EvalCatalog
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
 from .harness.executor import Executor
@@ -115,6 +116,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-harness",
         action="store_true",
         help="Run the prompt through the Planner Executor Evaluator harness.",
+    )
+    parser.add_argument(
+        "--list-evals",
+        action="store_true",
+        help="Validate and list offline evaluation cases.",
     )
     parser.add_argument(
         "--resume",
@@ -286,6 +292,18 @@ def list_harness_runs(store: ArtifactStore, output=sys.stdout) -> None:
     print("Harness runs:", file=output)
     for run in runs:
         print(f"  {run.run_id}  {run.root}", file=output)
+
+
+def list_eval_cases(catalog: EvalCatalog, output=sys.stdout) -> int:
+    cases = catalog.load()
+    if not cases:
+        print("No evaluation cases found.", file=output)
+        return 0
+    print("Evaluation cases:", file=output)
+    for case in cases:
+        tags = ", ".join(case.tags) or "untagged"
+        print(f"  {case.id}  graders={len(case.graders)}  tags={tags}", file=output)
+    return 0
 
 
 def list_tools(registry: ToolRegistry, output=sys.stdout) -> int:
@@ -562,6 +580,9 @@ def _main(argv: list[str] | None = None) -> int:
     if args.list_runs:
         list_harness_runs(ArtifactStore(base_dir=config.harness.runs_dir))
         return 0
+
+    if args.list_evals:
+        return list_eval_cases(EvalCatalog())
 
     if args.run_harness or args.resume:
         require_anthropic_api_key()

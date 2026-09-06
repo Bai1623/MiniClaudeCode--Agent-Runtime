@@ -14,6 +14,7 @@ from miniclaudecode.cli import (
     build_parser,
     build_project_summary,
     default_harness_tasks,
+    list_eval_cases,
     list_harness_runs,
     list_memory_records,
     list_tools,
@@ -26,6 +27,7 @@ from miniclaudecode.cli import (
     run_memory_index,
 )
 from miniclaudecode.config import Config, PermissionMode
+from miniclaudecode.evals import EvalCatalog
 from miniclaudecode.git_workflow.diff_summary import DiffSummary, FileChange
 from miniclaudecode.git_workflow.test_runner import TestRunResult
 from miniclaudecode.git_workflow.workflow import GitWorkflowReport
@@ -135,6 +137,16 @@ class TestCliHarnessOptions(unittest.TestCase):
 
         self.assertIn("Harness runs:", output.getvalue())
         self.assertIn(artifacts.run_id, output.getvalue())
+
+    def test_list_eval_cases_validates_and_outputs_catalog(self):
+        output = StringIO()
+        root = Path(__file__).parents[1] / "evals"
+
+        exit_code = list_eval_cases(EvalCatalog(root), output=output)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("fix-calculator-add", output.getvalue())
+        self.assertIn("graders=2", output.getvalue())
 
     def test_list_tools_outputs_registered_tools(self):
         output = StringIO()

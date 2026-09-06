@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "fix-calculator-add",
+  "task": "修复 calculator.add，使其正确返回两个数字之和；保留已有 API，并让全部测试通过。",
+  "fixture": "fix_calculator_add",
+  "success_criteria": [
+    "原有失败测试变为通过",
+    "calculator.add 的函数签名保持不变",
+    "只修改解决该缺陷所需的文件"
+  ],
+  "graders": [
+    {
+      "kind": "command",
+      "config": {"command": ["python", "-m", "unittest", "discover"]}
+    },
+    {
+      "kind": "changed_files",
+      "config": {"allowed": ["calculator.py"]}
+    }
+  ],
+  "budget": {
+    "max_model_calls": 8,
+    "max_tool_calls": 25,
+    "max_input_tokens": 50000,
+    "max_output_tokens": 10000,
+    "timeout_seconds": 120,
+    "max_cost_usd": 1.0
+  },
+  "tags": ["bug-fix", "python", "smoke", "development"]
+}

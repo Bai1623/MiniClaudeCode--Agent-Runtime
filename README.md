@@ -284,6 +284,16 @@ python -m miniclaudecode --git-summary --skip-git-tests
 python -m miniclaudecode --git-commit-message --skip-git-tests
 ```
 
+### Offline Evals
+
+校验并列出本地评测案例：
+
+```bash
+python -m miniclaudecode --list-evals
+```
+
+`evals/cases/*.json` 使用版本化 `EvalCase` 协议，明确任务、fixture、成功标准、grader 声明、资源预算和标签。fixture 只能引用 `evals/fixtures/` 下的相对目录，目录穿越、未知字段、重复 ID 和非法预算会在加载阶段失败。当前首个 `fix-calculator-add` 是可重复使用的 Python bug-fix smoke case；后续 runner 和 grader 将消费同一协议。
+
 ### Memory
 
 刷新项目 memory：
