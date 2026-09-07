@@ -10,12 +10,20 @@
   ],
   "graders": [
     {
-      "kind": "command",
-      "config": {"command": ["python", "-m", "unittest", "discover"]}
+      "kind": "fail_to_pass",
+      "config": {"command": ["{python}", "-m", "unittest", "discover"]}
     },
     {
-      "kind": "changed_files",
-      "config": {"allowed": ["calculator.py"]}
+      "kind": "pass_to_pass",
+      "config": {"command": ["{python}", "-m", "unittest", "test_calculator.TestCalculator.test_subtracts_numbers"]}
+    },
+    {
+      "kind": "expected_changes",
+      "config": {"required": ["calculator.py"], "allowed": ["calculator.py"]}
+    },
+    {
+      "kind": "forbidden_changes",
+      "config": {"patterns": ["test*.py", ".git/**"]}
     }
   ],
   "budget": {

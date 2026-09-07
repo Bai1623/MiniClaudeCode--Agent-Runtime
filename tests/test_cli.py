@@ -146,7 +146,7 @@ class TestCliHarnessOptions(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("fix-calculator-add", output.getvalue())
-        self.assertIn("graders=2", output.getvalue())
+        self.assertIn("graders=4", output.getvalue())
 
     def test_list_tools_outputs_registered_tools(self):
         output = StringIO()

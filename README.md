@@ -294,6 +294,15 @@ python -m miniclaudecode --list-evals
 
 `evals/cases/*.json` 使用版本化 `EvalCase` 协议，明确任务、fixture、成功标准、grader 声明、资源预算和标签。fixture 只能引用 `evals/fixtures/` 下的相对目录，目录穿越、未知字段、重复 ID 和非法预算会在加载阶段失败。当前首个 `fix-calculator-add` 是可重复使用的 Python bug-fix smoke case；后续 runner 和 grader 将消费同一协议。
 
+内置确定性 grader：
+
+- `fail_to_pass`：基线命令失败，候选修改后必须通过。
+- `pass_to_pass`：基线原本通过的回归检查，在候选修改后仍须通过。
+- `expected_changes`：检查必改文件以及允许修改的文件边界。
+- `forbidden_changes`：用路径模式阻止测试、Git 元数据等受保护区域被修改。
+
+命令 grader 使用参数数组执行，不经过 shell，并受 EvalCase 超时预算约束；输出会截断后写入版本化 `EvalGradeReport`，便于后续 EvalRunner 持久化和汇总。
+
 ### Memory
 
 刷新项目 memory：
