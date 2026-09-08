@@ -10,6 +10,10 @@
   ],
   "graders": [
     {
+      "kind": "no_op",
+      "config": {}
+    },
+    {
       "kind": "fail_to_pass",
       "config": {"command": ["{python}", "-m", "unittest", "discover"]}
     },

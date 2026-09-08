@@ -296,12 +296,13 @@ python -m miniclaudecode --list-evals
 
 内置确定性 grader：
 
+- `no_op`：对基线与候选工作区生成内容指纹，排除缓存等运行产物后必须存在实质变化。
 - `fail_to_pass`：基线命令失败，候选修改后必须通过。
 - `pass_to_pass`：基线原本通过的回归检查，在候选修改后仍须通过。
 - `expected_changes`：检查必改文件以及允许修改的文件边界。
 - `forbidden_changes`：用路径模式阻止测试、Git 元数据等受保护区域被修改。
 
-命令 grader 使用参数数组执行，不经过 shell，并受 EvalCase 超时预算约束；输出会截断后写入版本化 `EvalGradeReport`，便于后续 EvalRunner 持久化和汇总。
+命令 grader 使用参数数组执行，不经过 shell，并受 EvalCase 超时预算约束；输出会截断后写入版本化 `EvalGradeReport`。no-op grader 基于文件路径与 SHA-256 内容摘要比较工作区，默认忽略 `.git`、`__pycache__`、字节码及质量工具缓存，避免运行产物制造虚假改动。
 
 ### Memory
 

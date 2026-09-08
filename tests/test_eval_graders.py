@@ -49,7 +49,7 @@ class TestEvalGraders(unittest.TestCase):
         self.assertTrue(report.passed)
         self.assertEqual(
             [result.grader for result in report.results],
-            ["fail_to_pass", "pass_to_pass", "expected_changes", "forbidden_changes"],
+            ["no_op", "fail_to_pass", "pass_to_pass", "expected_changes", "forbidden_changes"],
         )
         self.assertTrue(all(result.passed for result in report.results))
         self.assertEqual(report.to_dict()["schema_version"], 1)
@@ -95,6 +95,27 @@ class TestEvalGraders(unittest.TestCase):
         result = next(result for result in report.results if result.grader == "fail_to_pass")
         self.assertFalse(result.passed)
         self.assertNotEqual(result.metadata["candidate_returncode"], 0)
+
+    def test_no_op_rejects_unchanged_candidate_and_ignores_generated_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            candidate = Path(tmpdir) / "candidate"
+            shutil.copytree(self.baseline, candidate)
+            cache_dir = candidate / "__pycache__"
+            cache_dir.mkdir(exist_ok=True)
+            (cache_dir / "calculator.pyc").write_bytes(b"generated")
+
+            report = GraderRegistry.default().grade(
+                self.case,
+                GradeContext(self.baseline, candidate, ("__pycache__/calculator.pyc",)),
+            )
+
+        result = next(result for result in report.results if result.grader == "no_op")
+        self.assertFalse(result.passed)
+        self.assertEqual(result.metadata["changed_content_files"], [])
+        self.assertEqual(
+            result.metadata["baseline_fingerprint"],
+            result.metadata["candidate_fingerprint"],
+        )
 
     def test_unknown_grader_kind_fails_explicitly(self):
         values = self.case.to_dict()

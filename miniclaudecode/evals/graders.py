@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -12,6 +13,19 @@ from typing import Any, Protocol
 from .models import EvalCase, EvalCaseValidationError, GraderSpec
 
 MAX_GRADE_OUTPUT_CHARS = 4_000
+DEFAULT_NO_OP_IGNORES = (
+    ".git/**",
+    "__pycache__/**",
+    "**/__pycache__/**",
+    "*.pyc",
+    "**/*.pyc",
+    "*.pyo",
+    "**/*.pyo",
+    ".pytest_cache/**",
+    ".mypy_cache/**",
+    ".ruff_cache/**",
+    ".coverage",
+)
 
 
 @dataclass(frozen=True)
@@ -162,6 +176,35 @@ class ForbiddenChangesGrader:
         )
 
 
+class NoOpGrader:
+    kind = "no_op"
+
+    def grade(self, spec: GraderSpec, context: GradeContext) -> GradeResult:
+        configured_ignores = _path_list(spec, "ignore_patterns", required=False)
+        ignore_patterns = tuple(sorted({*DEFAULT_NO_OP_IGNORES, *configured_ignores}))
+        baseline = _workspace_snapshot(context.baseline_dir, ignore_patterns)
+        candidate = _workspace_snapshot(context.candidate_dir, ignore_patterns)
+        changed_content_files = sorted(
+            path
+            for path in baseline.keys() | candidate.keys()
+            if baseline.get(path) != candidate.get(path)
+        )
+        passed = bool(changed_content_files)
+        return GradeResult(
+            grader=self.kind,
+            passed=passed,
+            message=(
+                f"Candidate contains substantive changes in {len(changed_content_files)} file(s)."
+                if passed
+                else "Candidate is a no-op after generated and ignored files are excluded."
+            ),
+            metadata={
+                "changed_content_files": changed_content_files,
+                "baseline_fingerprint": _snapshot_fingerprint(baseline),
+                "candidate_fingerprint": _snapshot_fingerprint(candidate),
+                "ignore_patterns": list(ignore_patterns),
+            },
+        )
 class GraderRegistry:
     def __init__(self) -> None:
         self._graders: dict[str, Grader] = {}
@@ -170,6 +213,7 @@ class GraderRegistry:
     def default(cls) -> GraderRegistry:
         registry = cls()
         for grader in (
+            NoOpGrader(),
             FailToPassGrader(),
             PassToPassGrader(),
             ExpectedChangesGrader(),
@@ -246,3 +290,27 @@ def _normalize_path(value: str) -> str:
     if path.is_absolute() or ".." in path.parts:
         raise EvalCaseValidationError(f"grader path must stay inside the candidate workspace: {value}")
     return path.as_posix()
+
+
+def _workspace_snapshot(root: Path, ignore_patterns: tuple[str, ...]) -> dict[str, str]:
+    if not root.is_dir():
+        raise EvalCaseValidationError(f"grader workspace does not exist: {root}")
+    snapshot: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if any(fnmatch.fnmatchcase(relative, pattern) for pattern in ignore_patterns):
+            continue
+        snapshot[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return snapshot
+
+
+def _snapshot_fingerprint(snapshot: dict[str, str]) -> str:
+    digest = hashlib.sha256()
+    for path, content_hash in sorted(snapshot.items()):
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(content_hash.encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
