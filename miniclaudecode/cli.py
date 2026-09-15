@@ -9,6 +9,7 @@ Mini version: product-oriented commands for chat, one-shot runs, tools, and doct
 from __future__ import annotations
 
 import argparse
+import copy
 import os
 import sys
 from collections.abc import Iterable, Mapping
@@ -18,7 +19,13 @@ from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from .config import Config, PermissionMode, load_config
 from .errors import ErrorPresenter, MissingApiKeyError
-from .evals import EvalCatalog
+from .evals import (
+    AgentCandidateExecutor,
+    CandidateExecutor,
+    EvalArtifactStore,
+    EvalCatalog,
+    EvalRunner,
+)
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
 from .harness.executor import Executor
@@ -121,6 +128,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--list-evals",
         action="store_true",
         help="Validate and list offline evaluation cases.",
+    )
+    parser.add_argument(
+        "--run-eval",
+        metavar="CASE_ID",
+        help="Run one offline evaluation case in an isolated workspace.",
+    )
+    parser.add_argument(
+        "--eval-root",
+        default="evals",
+        help="Directory containing cases/ and fixtures/ for offline evaluations.",
+    )
+    parser.add_argument(
+        "--eval-runs-dir",
+        default=".miniclaudecode/evals",
+        help="Directory where evaluation result artifacts are stored.",
     )
     parser.add_argument(
         "--resume",
@@ -304,6 +326,52 @@ def list_eval_cases(catalog: EvalCatalog, output=sys.stdout) -> int:
         tags = ", ".join(case.tags) or "untagged"
         print(f"  {case.id}  graders={len(case.graders)}  tags={tags}", file=output)
     return 0
+
+
+def run_eval(
+    args: argparse.Namespace,
+    config: Config,
+    *,
+    executor: CandidateExecutor | None = None,
+    output=sys.stdout,
+) -> int:
+    catalog = EvalCatalog(args.eval_root)
+    cases = {case.id: case for case in catalog.load()}
+    case = cases.get(args.run_eval)
+    if case is None:
+        available = ", ".join(sorted(cases)) or "none"
+        print(f"Error: unknown evaluation case '{args.run_eval}'. Available: {available}", file=sys.stderr)
+        return 2
+
+    if executor is None:
+        require_anthropic_api_key()
+
+        def build_isolated_agent(workspace: Path) -> AgentLoop:
+            isolated_config = copy.deepcopy(config)
+            isolated_config.workspace_root = str(workspace)
+            return build_agent(args, config=isolated_config)
+
+        executor = AgentCandidateExecutor(build_isolated_agent)
+
+    runner = EvalRunner(
+        artifact_store=EvalArtifactStore(args.eval_runs_dir),
+        work_root=Path(args.eval_runs_dir).parent,
+    )
+    try:
+        result = runner.run(
+            case,
+            manifest_dir=Path(args.eval_root) / "cases",
+            executor=executor,
+        )
+    except Exception as exc:
+        ERROR_PRESENTER.print(exc, output=sys.stderr)
+        return 1
+
+    print(f"Evaluation trial: {result.trial_id}", file=output)
+    print(f"Case: {result.case_id}", file=output)
+    print(f"Status: {result.status}", file=output)
+    print(f"Result: {result.artifact_path}", file=output)
+    return 0 if result.passed else 1
 
 
 def list_tools(registry: ToolRegistry, output=sys.stdout) -> int:
@@ -583,6 +651,9 @@ def _main(argv: list[str] | None = None) -> int:
 
     if args.list_evals:
         return list_eval_cases(EvalCatalog())
+
+    if args.run_eval:
+        return run_eval(args, config)
 
     if args.run_harness or args.resume:
         require_anthropic_api_key()

@@ -20,6 +20,7 @@ from miniclaudecode.cli import (
     list_tools,
     main,
     run_doctor,
+    run_eval,
     run_git_commit_message,
     run_git_summary,
     run_harness,
@@ -27,7 +28,7 @@ from miniclaudecode.cli import (
     run_memory_index,
 )
 from miniclaudecode.config import Config, PermissionMode
-from miniclaudecode.evals import EvalCatalog
+from miniclaudecode.evals import CandidateExecution, EvalCatalog
 from miniclaudecode.git_workflow.diff_summary import DiffSummary, FileChange
 from miniclaudecode.git_workflow.test_runner import TestRunResult
 from miniclaudecode.git_workflow.workflow import GitWorkflowReport
@@ -38,6 +39,20 @@ from miniclaudecode.tools.base import ToolRegistry
 
 
 class TestCliHarnessOptions(unittest.TestCase):
+    def test_parser_accepts_eval_runner_options(self):
+        args = build_parser().parse_args([
+            "--run-eval",
+            "fix-calculator-add",
+            "--eval-root",
+            "custom-evals",
+            "--eval-runs-dir",
+            "custom-runs",
+        ])
+
+        self.assertEqual(args.run_eval, "fix-calculator-add")
+        self.assertEqual(args.eval_root, "custom-evals")
+        self.assertEqual(args.eval_runs_dir, "custom-runs")
+
     def test_parser_accepts_product_commands(self):
         parser = build_parser()
 
@@ -147,6 +162,43 @@ class TestCliHarnessOptions(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("fix-calculator-add", output.getvalue())
         self.assertIn("graders=5", output.getvalue())
+
+    def test_run_eval_executes_case_and_prints_artifact(self):
+        class FixingExecutor:
+            def execute(self, case, workspace, timeout_seconds):
+                calculator = workspace / "calculator.py"
+                calculator.write_text(
+                    calculator.read_text(encoding="utf-8").replace(
+                        "return left - right",
+                        "return left + right",
+                        1,
+                    ),
+                    encoding="utf-8",
+                )
+                return CandidateExecution("fixed")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            eval_root = Path(__file__).parents[1] / "evals"
+            args = build_parser().parse_args([
+                "--run-eval",
+                "fix-calculator-add",
+                "--eval-root",
+                str(eval_root),
+                "--eval-runs-dir",
+                str(Path(tmpdir) / "runs"),
+            ])
+            output = StringIO()
+
+            exit_code = run_eval(
+                args,
+                Config(),
+                executor=FixingExecutor(),
+                output=output,
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Status: passed", output.getvalue())
+            self.assertEqual(len(list(Path(tmpdir).rglob("eval_result.json"))), 1)
 
     def test_list_tools_outputs_registered_tools(self):
         output = StringIO()

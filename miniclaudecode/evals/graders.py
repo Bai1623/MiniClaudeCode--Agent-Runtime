@@ -182,8 +182,8 @@ class NoOpGrader:
     def grade(self, spec: GraderSpec, context: GradeContext) -> GradeResult:
         configured_ignores = _path_list(spec, "ignore_patterns", required=False)
         ignore_patterns = tuple(sorted({*DEFAULT_NO_OP_IGNORES, *configured_ignores}))
-        baseline = _workspace_snapshot(context.baseline_dir, ignore_patterns)
-        candidate = _workspace_snapshot(context.candidate_dir, ignore_patterns)
+        baseline = workspace_snapshot(context.baseline_dir, ignore_patterns)
+        candidate = workspace_snapshot(context.candidate_dir, ignore_patterns)
         changed_content_files = sorted(
             path
             for path in baseline.keys() | candidate.keys()
@@ -205,6 +205,8 @@ class NoOpGrader:
                 "ignore_patterns": list(ignore_patterns),
             },
         )
+
+
 class GraderRegistry:
     def __init__(self) -> None:
         self._graders: dict[str, Grader] = {}
@@ -292,7 +294,7 @@ def _normalize_path(value: str) -> str:
     return path.as_posix()
 
 
-def _workspace_snapshot(root: Path, ignore_patterns: tuple[str, ...]) -> dict[str, str]:
+def workspace_snapshot(root: Path, ignore_patterns: tuple[str, ...]) -> dict[str, str]:
     if not root.is_dir():
         raise EvalCaseValidationError(f"grader workspace does not exist: {root}")
     snapshot: dict[str, str] = {}
@@ -304,6 +306,23 @@ def _workspace_snapshot(root: Path, ignore_patterns: tuple[str, ...]) -> dict[st
             continue
         snapshot[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     return snapshot
+
+
+def changed_workspace_files(
+    baseline_dir: Path,
+    candidate_dir: Path,
+    ignore_patterns: tuple[str, ...] = DEFAULT_NO_OP_IGNORES,
+) -> tuple[str, ...]:
+    """Return content-level changes without relying on Git metadata."""
+    baseline = workspace_snapshot(baseline_dir, ignore_patterns)
+    candidate = workspace_snapshot(candidate_dir, ignore_patterns)
+    return tuple(
+        sorted(
+            path
+            for path in baseline.keys() | candidate.keys()
+            if baseline.get(path) != candidate.get(path)
+        )
+    )
 
 
 def _snapshot_fingerprint(snapshot: dict[str, str]) -> str:
