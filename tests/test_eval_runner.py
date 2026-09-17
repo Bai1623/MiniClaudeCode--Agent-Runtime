@@ -6,8 +6,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from miniclaudecode.evals import (
+    AgentCandidateExecutor,
     CandidateExecution,
     EvalArtifactStore,
     EvalCatalog,
@@ -19,7 +21,13 @@ class FixingExecutor:
     def __init__(self) -> None:
         self.workspaces: list[Path] = []
 
-    def execute(self, case, workspace: Path, timeout_seconds: int) -> CandidateExecution:
+    def execute(
+        self,
+        case,
+        workspace: Path,
+        timeout_seconds: int,
+        artifact_dir: Path,
+    ) -> CandidateExecution:
         self.workspaces.append(workspace)
         if not (workspace / ".git").is_dir():
             raise AssertionError("candidate workspace must be a Git repository")
@@ -32,8 +40,55 @@ class FixingExecutor:
 
 
 class FailingExecutor:
-    def execute(self, case, workspace: Path, timeout_seconds: int) -> CandidateExecution:
+    def execute(
+        self,
+        case,
+        workspace: Path,
+        timeout_seconds: int,
+        artifact_dir: Path,
+    ) -> CandidateExecution:
         raise RuntimeError("candidate crashed")
+
+
+class RecordingAgent:
+    def __init__(self, workspace: Path) -> None:
+        self.workspace = workspace
+        self.context = SimpleNamespace(messages=[])
+        self.trace_dir: Path | None = None
+
+    def set_trace_dir(self, trace_dir: str) -> None:
+        self.trace_dir = Path(trace_dir)
+
+    def run_with_result(self, task: str):
+        calculator = self.workspace / "calculator.py"
+        calculator.write_text(
+            calculator.read_text(encoding="utf-8").replace(
+                "return left - right",
+                "return left + right",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.context.messages.extend([
+            {"role": "user", "content": task},
+            {"role": "assistant", "content": [{"type": "text", "text": "fixed"}]},
+        ])
+        assert self.trace_dir is not None
+        self.trace_dir.mkdir(parents=True)
+        (self.trace_dir / "agent-run.jsonl").write_text(
+            '{"schema_version":1,"turn":1,"tool_name":"edit_file","status":"ok"}\n',
+            encoding="utf-8",
+        )
+        (self.trace_dir / "model_calls.jsonl").write_text(
+            '{"schema_version":1,"turn":1,"model":"test-model"}\n',
+            encoding="utf-8",
+        )
+        return SimpleNamespace(
+            text="fixed",
+            run_id="agent-run",
+            turns=1,
+            reached_max_turns=False,
+        )
 
 
 class TestEvalRunner(unittest.TestCase):
@@ -70,6 +125,11 @@ class TestEvalRunner(unittest.TestCase):
             self.assertEqual(payload["isolation_mode"], "temporary_git_repository")
             self.assertTrue(payload["grade_report"]["passed"])
             self.assertEqual(payload["execution"]["metadata"]["timeout_seconds"], 120)
+            self.assertIn("calculator.py", (result.artifact_path.parent / "candidate.diff").read_text(encoding="utf-8"))
+            index = json.loads((result.artifact_path.parent / "artifacts.json").read_text(encoding="utf-8"))
+            indexed = {entry["path"] for entry in index["artifacts"]}
+            self.assertIn("eval_result.json", indexed)
+            self.assertIn("grader_results.json", indexed)
             self.assertFalse(executor.workspaces[0].exists())
 
         self.assertEqual((self.fixture / "calculator.py").read_text(encoding="utf-8"), self.original)
@@ -121,6 +181,39 @@ class TestEvalRunner(unittest.TestCase):
             self.assertIn("candidate crashed", payload["execution"]["error_message"])
             self.assertEqual(payload["failure"]["stage"], "candidate_execution")
             self.assertIsNone(payload["grade_report"])
+            self.assertTrue((result.artifact_path.parent / "transcript.jsonl").is_file())
+            self.assertTrue((result.artifact_path.parent / "artifacts.json").is_file())
+
+    def test_agent_executor_persists_transcript_trajectory_and_raw_traces(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = EvalRunner(
+                artifact_store=EvalArtifactStore(Path(tmpdir) / "artifacts"),
+                work_root=Path(tmpdir),
+            )
+
+            result = runner.run(
+                self.case,
+                manifest_dir=self.eval_root / "cases",
+                executor=AgentCandidateExecutor(RecordingAgent),
+                trial_id="agent-trial",
+            )
+            trial_dir = result.artifact_path.parent
+            transcript = [
+                json.loads(line)
+                for line in (trial_dir / "transcript.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            trajectory = [
+                json.loads(line)
+                for line in (trial_dir / "tool_trajectory.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            index = json.loads((trial_dir / "artifacts.json").read_text(encoding="utf-8"))
+            indexed = {entry["path"] for entry in index["artifacts"]}
+
+            self.assertTrue(result.passed)
+            self.assertEqual([message["role"] for message in transcript], ["user", "assistant"])
+            self.assertEqual(trajectory[0]["tool_name"], "edit_file")
+            self.assertIn("traces/agent-run.jsonl", indexed)
+            self.assertIn("traces/model_calls.jsonl", indexed)
 
     def test_trial_id_collision_does_not_overwrite_prior_evidence(self):
         with tempfile.TemporaryDirectory() as tmpdir:

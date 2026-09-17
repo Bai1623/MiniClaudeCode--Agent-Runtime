@@ -247,3 +247,7 @@ ask 模式从简单 yes/no 升级为更接近真实产品的权限确认体验�
 - 增加发布流程，例如版本号、changelog、package publish dry-run。
 - 扩展 harness 报告为结构化 JSON，方便后续接入 Web UI 或 CI artifact。
 - 对 workspace policy 增加更多攻击用例测试，例如 symlink、硬链接、shell glob、环境变量展开和复杂重定向。
+
+## 2026-09-17：Eval trial 可审计证据链
+
+隔离式 EvalRunner 现在会把 Agent 对话、隐私安全的工具轨迹、候选 Git diff、grader 明细和原始模型/工具 trace 绑定到同一个 trial。统一的 `artifacts.json` 为每个文件记录相对路径、媒体类型、大小和 SHA-256，使一次评测从单一通过/失败结果升级为可定位、可校验、可回放的实验记录。

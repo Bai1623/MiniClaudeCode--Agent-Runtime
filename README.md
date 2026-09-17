@@ -300,6 +300,8 @@ python -m miniclaudecode --mode auto --run-eval fix-calculator-add
 
 runner 会分别复制只读基线和候选工作区，并把候选初始化为带基线提交的临时 Git 仓库，Agent 只能操作候选副本；随后自动计算内容级变更、运行全部 grader，并把版本化结果原子写入 `.miniclaudecode/evals/<case_id>/<trial_id>/eval_result.json`。临时仓库在成功或异常后都会清理，fixture 不会被修改；执行器异常也会持久化为 `infrastructure_error`，保留可审计的失败证据。
 
+每个 trial 还会保存 `transcript.jsonl`、`tool_trajectory.jsonl`、`candidate.diff`、`grader_results.json` 和原始 trace。`artifacts.json` 为全部产物记录相对路径、媒体类型、字节数和 SHA-256，可用于 CI 归档完整性校验以及后续实验回放。
+
 `evals/cases/*.json` 使用版本化 `EvalCase` 协议，明确任务、fixture、成功标准、grader 声明、资源预算和标签。fixture 只能引用 `evals/fixtures/` 下的相对目录，目录穿越、未知字段、重复 ID 和非法预算会在加载阶段失败。当前首个 `fix-calculator-add` 是可重复使用的 Python bug-fix smoke case，已能通过隔离式 runner 执行和评分。
 
 内置确定性 grader：

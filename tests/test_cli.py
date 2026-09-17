@@ -165,7 +165,7 @@ class TestCliHarnessOptions(unittest.TestCase):
 
     def test_run_eval_executes_case_and_prints_artifact(self):
         class FixingExecutor:
-            def execute(self, case, workspace, timeout_seconds):
+            def execute(self, case, workspace, timeout_seconds, artifact_dir):
                 calculator = workspace / "calculator.py"
                 calculator.write_text(
                     calculator.read_text(encoding="utf-8").replace(

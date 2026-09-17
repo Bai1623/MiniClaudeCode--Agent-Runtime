@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -25,11 +26,58 @@ class EvalArtifactStore:
         return trial_dir
 
     def write_result(self, trial_dir: Path, result: dict[str, Any]) -> Path:
-        path = trial_dir / "eval_result.json"
-        temporary = trial_dir / ".eval_result.json.tmp"
+        return self.write_json(trial_dir / "eval_result.json", result)
+
+    def write_json(self, path: Path, value: Any) -> Path:
+        return self.write_text(
+            path,
+            json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+        )
+
+    def write_jsonl(self, path: Path, values: list[dict[str, Any]]) -> Path:
+        content = "".join(
+            json.dumps(value, ensure_ascii=False) + "\n"
+            for value in values
+        )
+        return self.write_text(path, content)
+
+    def write_text(self, path: Path, content: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.tmp")
         temporary.write_text(
-            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            content,
             encoding="utf-8",
         )
         os.replace(temporary, path)
         return path
+
+    def write_index(self, trial_dir: Path) -> Path:
+        entries = []
+        for path in sorted(trial_dir.rglob("*")):
+            if not path.is_file() or path.name == "artifacts.json":
+                continue
+            content = path.read_bytes()
+            entries.append({
+                "path": path.relative_to(trial_dir).as_posix(),
+                "media_type": _media_type(path),
+                "size_bytes": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            })
+        return self.write_json(
+            trial_dir / "artifacts.json",
+            {
+                "schema_version": 1,
+                "artifact_count": len(entries),
+                "artifacts": entries,
+            },
+        )
+
+
+def _media_type(path: Path) -> str:
+    if path.suffix == ".json":
+        return "application/json"
+    if path.suffix == ".jsonl":
+        return "application/x-ndjson"
+    if path.suffix == ".diff":
+        return "text/x-diff"
+    return "text/plain"
