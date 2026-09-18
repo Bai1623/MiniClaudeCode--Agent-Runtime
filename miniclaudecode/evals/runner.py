@@ -93,6 +93,22 @@ class EvalRunResult:
     changed_files: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class EvalBatchResult:
+    batch_id: str
+    case_id: str
+    requested_trials: int
+    passed_trials: int
+    failed_trials: int
+    infrastructure_errors: int
+    summary_path: Path
+    trials: tuple[EvalRunResult, ...]
+
+    @property
+    def all_passed(self) -> bool:
+        return self.passed_trials == self.requested_trials
+
+
 class EvalRunner:
     """Copy a fixture into isolation, execute a candidate, grade it, and persist evidence."""
 
@@ -116,9 +132,14 @@ class EvalRunner:
         manifest_dir: str | Path,
         executor: CandidateExecutor,
         trial_id: str | None = None,
+        batch_id: str | None = None,
     ) -> EvalRunResult:
         resolved_trial_id = trial_id or self._new_trial_id()
-        trial_dir = self.artifact_store.create_trial(case.id, resolved_trial_id)
+        trial_dir = self.artifact_store.create_scoped_trial(
+            case.id,
+            resolved_trial_id,
+            batch_id=batch_id,
+        )
         started_at = self.clock()
         started = time.monotonic()
         status = "infrastructure_error"
@@ -267,6 +288,85 @@ class EvalRunner:
                 "results": [],
             },
         )
+
+
+class EvalBatchRunner:
+    """Run repeated isolated trials and persist a deterministic batch manifest."""
+
+    def __init__(
+        self,
+        runner: EvalRunner,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.runner = runner
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+
+    def run(
+        self,
+        case: EvalCase,
+        *,
+        manifest_dir: str | Path,
+        executor_factory: Callable[[], CandidateExecutor],
+        trial_count: int,
+        batch_id: str | None = None,
+    ) -> EvalBatchResult:
+        if isinstance(trial_count, bool) or not isinstance(trial_count, int) or trial_count <= 0:
+            raise ValueError("trial_count must be a positive integer.")
+        resolved_batch_id = batch_id or self._new_batch_id()
+        batch_dir = self.runner.artifact_store.create_batch(case.id, resolved_batch_id)
+        trials = tuple(
+            self.runner.run(
+                case,
+                manifest_dir=manifest_dir,
+                executor=executor_factory(),
+                trial_id=f"trial-{index:03d}",
+                batch_id=resolved_batch_id,
+            )
+            for index in range(1, trial_count + 1)
+        )
+        passed_trials = sum(result.passed for result in trials)
+        infrastructure_errors = sum(
+            result.status == "infrastructure_error"
+            for result in trials
+        )
+        failed_trials = trial_count - passed_trials - infrastructure_errors
+        summary = {
+            "schema_version": 1,
+            "batch_id": resolved_batch_id,
+            "case_id": case.id,
+            "requested_trials": trial_count,
+            "completed_trials": len(trials),
+            "passed_trials": passed_trials,
+            "failed_trials": failed_trials,
+            "infrastructure_errors": infrastructure_errors,
+            "all_passed": passed_trials == trial_count,
+            "trials": [
+                {
+                    "index": index,
+                    "trial_id": result.trial_id,
+                    "status": result.status,
+                    "passed": result.passed,
+                    "result": result.artifact_path.relative_to(batch_dir).as_posix(),
+                }
+                for index, result in enumerate(trials, start=1)
+            ],
+        }
+        summary_path = self.runner.artifact_store.write_batch_summary(batch_dir, summary)
+        return EvalBatchResult(
+            batch_id=resolved_batch_id,
+            case_id=case.id,
+            requested_trials=trial_count,
+            passed_trials=passed_trials,
+            failed_trials=failed_trials,
+            infrastructure_errors=infrastructure_errors,
+            summary_path=summary_path,
+            trials=trials,
+        )
+
+    def _new_batch_id(self) -> str:
+        timestamp = self.clock().strftime("%Y%m%dT%H%M%S%fZ")
+        return f"batch-{timestamp}-{uuid.uuid4().hex[:8]}"
 
 
 def _isoformat(value: datetime) -> str:

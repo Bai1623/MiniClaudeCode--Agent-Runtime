@@ -23,6 +23,7 @@ from .evals import (
     AgentCandidateExecutor,
     CandidateExecutor,
     EvalArtifactStore,
+    EvalBatchRunner,
     EvalCatalog,
     EvalRunner,
 )
@@ -143,6 +144,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--eval-runs-dir",
         default=".miniclaudecode/evals",
         help="Directory where evaluation result artifacts are stored.",
+    )
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=1,
+        help="Number of isolated trials to run for --run-eval (default: 1).",
     )
     parser.add_argument(
         "--resume",
@@ -342,6 +349,9 @@ def run_eval(
         available = ", ".join(sorted(cases)) or "none"
         print(f"Error: unknown evaluation case '{args.run_eval}'. Available: {available}", file=sys.stderr)
         return 2
+    if args.trials <= 0:
+        print("Error: --trials must be a positive integer.", file=sys.stderr)
+        return 2
 
     if executor is None:
         require_anthropic_api_key()
@@ -351,27 +361,39 @@ def run_eval(
             isolated_config.workspace_root = str(workspace)
             return build_agent(args, config=isolated_config)
 
-        executor = AgentCandidateExecutor(build_isolated_agent)
+        def agent_executor_factory() -> CandidateExecutor:
+            return AgentCandidateExecutor(build_isolated_agent)
+
+        executor_factory = agent_executor_factory
+    else:
+        provided_executor = executor
+
+        def provided_executor_factory() -> CandidateExecutor:
+            return provided_executor
+
+        executor_factory = provided_executor_factory
 
     runner = EvalRunner(
         artifact_store=EvalArtifactStore(args.eval_runs_dir),
         work_root=Path(args.eval_runs_dir).parent,
     )
     try:
-        result = runner.run(
+        result = EvalBatchRunner(runner).run(
             case,
             manifest_dir=Path(args.eval_root) / "cases",
-            executor=executor,
+            executor_factory=executor_factory,
+            trial_count=args.trials,
         )
     except Exception as exc:
         ERROR_PRESENTER.print(exc, output=sys.stderr)
         return 1
 
-    print(f"Evaluation trial: {result.trial_id}", file=output)
+    print(f"Evaluation batch: {result.batch_id}", file=output)
     print(f"Case: {result.case_id}", file=output)
-    print(f"Status: {result.status}", file=output)
-    print(f"Result: {result.artifact_path}", file=output)
-    return 0 if result.passed else 1
+    print(f"Trials: {result.passed_trials}/{result.requested_trials} passed", file=output)
+    print(f"Infrastructure errors: {result.infrastructure_errors}", file=output)
+    print(f"Summary: {result.summary_path}", file=output)
+    return 0 if result.all_passed else 1
 
 
 def list_tools(registry: ToolRegistry, output=sys.stdout) -> int:

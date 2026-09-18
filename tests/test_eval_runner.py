@@ -12,6 +12,7 @@ from miniclaudecode.evals import (
     AgentCandidateExecutor,
     CandidateExecution,
     EvalArtifactStore,
+    EvalBatchRunner,
     EvalCatalog,
     EvalRunner,
 )
@@ -159,6 +160,82 @@ class TestEvalRunner(unittest.TestCase):
             self.assertTrue(second.passed)
             self.assertNotEqual(first.artifact_path, second.artifact_path)
             self.assertFalse(any(path.exists() for path in executor.workspaces))
+
+    def test_batch_runner_creates_fresh_executors_and_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_store = EvalArtifactStore(Path(tmpdir) / "artifacts")
+            runner = EvalRunner(artifact_store=artifact_store, work_root=Path(tmpdir))
+            executors: list[FixingExecutor] = []
+
+            def executor_factory() -> FixingExecutor:
+                executor = FixingExecutor()
+                executors.append(executor)
+                return executor
+
+            result = EvalBatchRunner(runner).run(
+                self.case,
+                manifest_dir=self.eval_root / "cases",
+                executor_factory=executor_factory,
+                trial_count=3,
+                batch_id="batch-one",
+            )
+            summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+
+            self.assertTrue(result.all_passed)
+            self.assertEqual(result.passed_trials, 3)
+            self.assertEqual(len(executors), 3)
+            self.assertEqual(
+                [trial.trial_id for trial in result.trials],
+                ["trial-001", "trial-002", "trial-003"],
+            )
+            self.assertEqual(summary["completed_trials"], 3)
+            self.assertEqual(
+                [trial["result"] for trial in summary["trials"]],
+                [
+                    "trial-001/eval_result.json",
+                    "trial-002/eval_result.json",
+                    "trial-003/eval_result.json",
+                ],
+            )
+            workspaces = [executor.workspaces[0] for executor in executors]
+            self.assertEqual(len(set(workspaces)), 3)
+            self.assertFalse(any(workspace.exists() for workspace in workspaces))
+
+    def test_batch_runner_keeps_running_after_trial_infrastructure_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = EvalRunner(
+                artifact_store=EvalArtifactStore(Path(tmpdir) / "artifacts"),
+                work_root=Path(tmpdir),
+            )
+            executors = iter([FailingExecutor(), FixingExecutor()])
+
+            result = EvalBatchRunner(runner).run(
+                self.case,
+                manifest_dir=self.eval_root / "cases",
+                executor_factory=lambda: next(executors),
+                trial_count=2,
+                batch_id="mixed-batch",
+            )
+
+            self.assertFalse(result.all_passed)
+            self.assertEqual(result.passed_trials, 1)
+            self.assertEqual(result.infrastructure_errors, 1)
+            self.assertEqual([trial.status for trial in result.trials], ["infrastructure_error", "passed"])
+
+    def test_batch_runner_rejects_non_positive_trial_count(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = EvalRunner(
+                artifact_store=EvalArtifactStore(Path(tmpdir) / "artifacts"),
+                work_root=Path(tmpdir),
+            )
+
+            with self.assertRaisesRegex(ValueError, "positive integer"):
+                EvalBatchRunner(runner).run(
+                    self.case,
+                    manifest_dir=self.eval_root / "cases",
+                    executor_factory=FixingExecutor,
+                    trial_count=0,
+                )
 
     def test_executor_failure_is_persisted_as_infrastructure_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:

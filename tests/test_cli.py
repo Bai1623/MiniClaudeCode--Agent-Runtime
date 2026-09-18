@@ -47,11 +47,14 @@ class TestCliHarnessOptions(unittest.TestCase):
             "custom-evals",
             "--eval-runs-dir",
             "custom-runs",
+            "--trials",
+            "3",
         ])
 
         self.assertEqual(args.run_eval, "fix-calculator-add")
         self.assertEqual(args.eval_root, "custom-evals")
         self.assertEqual(args.eval_runs_dir, "custom-runs")
+        self.assertEqual(args.trials, 3)
 
     def test_parser_accepts_product_commands(self):
         parser = build_parser()
@@ -197,8 +200,26 @@ class TestCliHarnessOptions(unittest.TestCase):
             )
 
             self.assertEqual(exit_code, 0)
-            self.assertIn("Status: passed", output.getvalue())
+            self.assertIn("Trials: 1/1 passed", output.getvalue())
             self.assertEqual(len(list(Path(tmpdir).rglob("eval_result.json"))), 1)
+            self.assertEqual(len(list(Path(tmpdir).rglob("trials_summary.json"))), 1)
+
+    def test_run_eval_rejects_non_positive_trial_count(self):
+        eval_root = Path(__file__).parents[1] / "evals"
+        args = build_parser().parse_args([
+            "--run-eval",
+            "fix-calculator-add",
+            "--eval-root",
+            str(eval_root),
+            "--trials",
+            "0",
+        ])
+
+        with redirect_stderr(StringIO()) as error:
+            exit_code = run_eval(args, Config(), executor=object())
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("--trials must be a positive integer", error.getvalue())
 
     def test_list_tools_outputs_registered_tools(self):
         output = StringIO()

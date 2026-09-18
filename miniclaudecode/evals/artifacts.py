@@ -19,9 +19,27 @@ class EvalArtifactStore:
         self.base_dir = Path(base_dir)
 
     def create_trial(self, case_id: str, trial_id: str) -> Path:
-        if not _TRIAL_ID_PATTERN.fullmatch(trial_id):
-            raise ValueError("trial_id must be a portable filename using letters, digits, ._-.")
-        trial_dir = self.base_dir / case_id / trial_id
+        return self.create_scoped_trial(case_id, trial_id)
+
+    def create_batch(self, case_id: str, batch_id: str) -> Path:
+        _validate_artifact_id("batch_id", batch_id)
+        batch_dir = self.base_dir / case_id / batch_id
+        batch_dir.mkdir(parents=True, exist_ok=False)
+        return batch_dir
+
+    def create_scoped_trial(
+        self,
+        case_id: str,
+        trial_id: str,
+        *,
+        batch_id: str | None = None,
+    ) -> Path:
+        _validate_artifact_id("trial_id", trial_id)
+        parent = self.base_dir / case_id
+        if batch_id is not None:
+            _validate_artifact_id("batch_id", batch_id)
+            parent /= batch_id
+        trial_dir = parent / trial_id
         trial_dir.mkdir(parents=True, exist_ok=False)
         return trial_dir
 
@@ -72,6 +90,9 @@ class EvalArtifactStore:
             },
         )
 
+    def write_batch_summary(self, batch_dir: Path, summary: dict[str, Any]) -> Path:
+        return self.write_json(batch_dir / "trials_summary.json", summary)
+
 
 def _media_type(path: Path) -> str:
     if path.suffix == ".json":
@@ -81,3 +102,8 @@ def _media_type(path: Path) -> str:
     if path.suffix == ".diff":
         return "text/x-diff"
     return "text/plain"
+
+
+def _validate_artifact_id(name: str, value: str) -> None:
+    if not _TRIAL_ID_PATTERN.fullmatch(value):
+        raise ValueError(f"{name} must be a portable filename using letters, digits, ._-.")

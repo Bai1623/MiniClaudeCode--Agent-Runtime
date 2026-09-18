@@ -14,6 +14,8 @@ from .runner import (
     AgentCandidateExecutor,
     CandidateExecution,
     CandidateExecutor,
+    EvalBatchResult,
+    EvalBatchRunner,
     EvalRunner,
     EvalRunResult,
 )
@@ -25,6 +27,8 @@ __all__ = [
     "EvalCaseValidationError",
     "EvalCatalog",
     "EvalGradeReport",
+    "EvalBatchResult",
+    "EvalBatchRunner",
     "EvalRunResult",
     "EvalRunner",
     "GradeContext",

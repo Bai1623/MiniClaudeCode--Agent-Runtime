@@ -298,7 +298,15 @@ python -m miniclaudecode --list-evals
 python -m miniclaudecode --mode auto --run-eval fix-calculator-add
 ```
 
-runner 会分别复制只读基线和候选工作区，并把候选初始化为带基线提交的临时 Git 仓库，Agent 只能操作候选副本；随后自动计算内容级变更、运行全部 grader，并把版本化结果原子写入 `.miniclaudecode/evals/<case_id>/<trial_id>/eval_result.json`。临时仓库在成功或异常后都会清理，fixture 不会被修改；执行器异常也会持久化为 `infrastructure_error`，保留可审计的失败证据。
+对同一案例运行多个相互隔离的 trial：
+
+```bash
+python -m miniclaudecode --mode auto --run-eval fix-calculator-add --trials 3
+```
+
+批量模式会为每次 trial 创建新的 Agent、临时 Git 仓库和产物目录。单次基础设施错误不会阻断剩余 trial；批次级 `trials_summary.json` 会记录稳定的 `trial-001` 等标识、每次状态和结果路径，并分别汇总通过、任务失败与基础设施错误数量。
+
+runner 会分别复制只读基线和候选工作区，并把候选初始化为带基线提交的临时 Git 仓库，Agent 只能操作候选副本；随后自动计算内容级变更、运行全部 grader，并把版本化结果原子写入 `.miniclaudecode/evals/<case_id>/<batch_id>/<trial_id>/eval_result.json`。临时仓库在成功或异常后都会清理，fixture 不会被修改；执行器异常也会持久化为 `infrastructure_error`，保留可审计的失败证据。
 
 每个 trial 还会保存 `transcript.jsonl`、`tool_trajectory.jsonl`、`candidate.diff`、`grader_results.json` 和原始 trace。`artifacts.json` 为全部产物记录相对路径、媒体类型、字节数和 SHA-256，可用于 CI 归档完整性校验以及后续实验回放。
 
