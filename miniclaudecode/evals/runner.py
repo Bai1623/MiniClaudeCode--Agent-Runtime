@@ -15,6 +15,7 @@ from typing import Any, Callable, Protocol
 
 from .artifacts import EvalArtifactStore
 from .graders import GradeContext, GraderRegistry, changed_workspace_files
+from .metrics import build_batch_metrics
 from .models import EvalCase
 
 EVAL_RESULT_SCHEMA_VERSION = 1
@@ -103,6 +104,7 @@ class EvalBatchResult:
     infrastructure_errors: int
     summary_path: Path
     trials: tuple[EvalRunResult, ...]
+    metrics: dict[str, Any]
 
     @property
     def all_passed(self) -> bool:
@@ -331,6 +333,7 @@ class EvalBatchRunner:
             for result in trials
         )
         failed_trials = trial_count - passed_trials - infrastructure_errors
+        metrics = build_batch_metrics(trials)
         summary = {
             "schema_version": 1,
             "batch_id": resolved_batch_id,
@@ -341,6 +344,7 @@ class EvalBatchRunner:
             "failed_trials": failed_trials,
             "infrastructure_errors": infrastructure_errors,
             "all_passed": passed_trials == trial_count,
+            "metrics": metrics,
             "trials": [
                 {
                     "index": index,
@@ -362,6 +366,7 @@ class EvalBatchRunner:
             infrastructure_errors=infrastructure_errors,
             summary_path=summary_path,
             trials=trials,
+            metrics=metrics,
         )
 
     def _new_batch_id(self) -> str:

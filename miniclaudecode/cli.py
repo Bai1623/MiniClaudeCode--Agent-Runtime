@@ -392,6 +392,14 @@ def run_eval(
     print(f"Case: {result.case_id}", file=output)
     print(f"Trials: {result.passed_trials}/{result.requested_trials} passed", file=output)
     print(f"Infrastructure errors: {result.infrastructure_errors}", file=output)
+    pass_metrics = result.metrics["pass_metrics"]
+    k = str(result.requested_trials)
+    print(
+        f"Pass metrics: pass@1={pass_metrics['pass@1']}, "
+        f"pass@{k}={pass_metrics['pass@k'][k]}, "
+        f"pass^{k}={pass_metrics['pass^k'][k]}",
+        file=output,
+    )
     print(f"Summary: {result.summary_path}", file=output)
     return 0 if result.all_passed else 1
 

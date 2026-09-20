@@ -9,6 +9,7 @@ from .graders import (
     GraderRegistry,
     changed_workspace_files,
 )
+from .metrics import build_batch_metrics
 from .models import EvalBudget, EvalCase, EvalCaseValidationError, GraderSpec, load_eval_case
 from .runner import (
     AgentCandidateExecutor,
@@ -39,5 +40,6 @@ __all__ = [
     "CandidateExecution",
     "CandidateExecutor",
     "changed_workspace_files",
+    "build_batch_metrics",
     "load_eval_case",
 ]

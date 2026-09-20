@@ -189,6 +189,8 @@ class TestEvalRunner(unittest.TestCase):
                 ["trial-001", "trial-002", "trial-003"],
             )
             self.assertEqual(summary["completed_trials"], 3)
+            self.assertEqual(summary["metrics"]["pass_metrics"]["pass@1"], 1.0)
+            self.assertEqual(result.metrics["pass_metrics"]["pass^k"]["3"], 1.0)
             self.assertEqual(
                 [trial["result"] for trial in summary["trials"]],
                 [

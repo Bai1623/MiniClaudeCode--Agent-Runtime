@@ -201,6 +201,7 @@ class TestCliHarnessOptions(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertIn("Trials: 1/1 passed", output.getvalue())
+            self.assertIn("Pass metrics: pass@1=1.0", output.getvalue())
             self.assertEqual(len(list(Path(tmpdir).rglob("eval_result.json"))), 1)
             self.assertEqual(len(list(Path(tmpdir).rglob("trials_summary.json"))), 1)
 
