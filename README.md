@@ -308,6 +308,8 @@ python -m miniclaudecode --mode auto --run-eval fix-calculator-add --trials 3
 
 `trials_summary.json` 同时提供标准化指标：经验 `pass@1`、无放回组合估计 `pass@k = 1 - C(n-c,k)/C(n,k)`、严格连续成功指标 `pass^k = C(c,k)/C(n,k)`，以及 token、估算成本、trial 耗时、模型/工具调用数的 total、mean、P50、P95。基础设施错误会保守计入未通过并单独报告；未配置模型价格时，成本标记为不可用而不是错误地记为 0。
 
+每个批次还会在执行 trial 之前写入 `experiment_manifest.json`，固化 Git commit、分支与 dirty 状态、miniClaudeCode/模型版本、脱敏后的规范化配置及其 SHA-256、Python/操作系统信息，以及 EvalCase 哈希、schema 和资源预算。临时工作区路径会替换为稳定占位符，API Key 不进入快照，因此同一配置可跨机器比较且不会泄露凭据。
+
 runner 会分别复制只读基线和候选工作区，并把候选初始化为带基线提交的临时 Git 仓库，Agent 只能操作候选副本；随后自动计算内容级变更、运行全部 grader，并把版本化结果原子写入 `.miniclaudecode/evals/<case_id>/<batch_id>/<trial_id>/eval_result.json`。临时仓库在成功或异常后都会清理，fixture 不会被修改；执行器异常也会持久化为 `infrastructure_error`，保留可审计的失败证据。
 
 每个 trial 还会保存 `transcript.jsonl`、`tool_trajectory.jsonl`、`candidate.diff`、`grader_results.json` 和原始 trace。`artifacts.json` 为全部产物记录相对路径、媒体类型、字节数和 SHA-256，可用于 CI 归档完整性校验以及后续实验回放。

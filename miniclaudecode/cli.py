@@ -26,6 +26,7 @@ from .evals import (
     EvalBatchRunner,
     EvalCatalog,
     EvalRunner,
+    ExperimentManifestBuilder,
 )
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
@@ -378,7 +379,13 @@ def run_eval(
         work_root=Path(args.eval_runs_dir).parent,
     )
     try:
-        result = EvalBatchRunner(runner).run(
+        result = EvalBatchRunner(
+            runner,
+            manifest_builder=ExperimentManifestBuilder(
+                config=config,
+                project_root=Path.cwd(),
+            ),
+        ).run(
             case,
             manifest_dir=Path(args.eval_root) / "cases",
             executor_factory=executor_factory,
@@ -401,6 +408,7 @@ def run_eval(
         file=output,
     )
     print(f"Summary: {result.summary_path}", file=output)
+    print(f"Manifest: {result.manifest_path}", file=output)
     return 0 if result.all_passed else 1
 
 

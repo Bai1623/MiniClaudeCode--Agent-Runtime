@@ -9,6 +9,7 @@ from .graders import (
     GraderRegistry,
     changed_workspace_files,
 )
+from .manifest import ExperimentManifestBuilder
 from .metrics import build_batch_metrics
 from .models import EvalBudget, EvalCase, EvalCaseValidationError, GraderSpec, load_eval_case
 from .runner import (
@@ -28,6 +29,7 @@ __all__ = [
     "EvalCaseValidationError",
     "EvalCatalog",
     "EvalGradeReport",
+    "ExperimentManifestBuilder",
     "EvalBatchResult",
     "EvalBatchRunner",
     "EvalRunResult",

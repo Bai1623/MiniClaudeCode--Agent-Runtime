@@ -202,8 +202,10 @@ class TestCliHarnessOptions(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertIn("Trials: 1/1 passed", output.getvalue())
             self.assertIn("Pass metrics: pass@1=1.0", output.getvalue())
+            self.assertIn("Manifest:", output.getvalue())
             self.assertEqual(len(list(Path(tmpdir).rglob("eval_result.json"))), 1)
             self.assertEqual(len(list(Path(tmpdir).rglob("trials_summary.json"))), 1)
+            self.assertEqual(len(list(Path(tmpdir).rglob("experiment_manifest.json"))), 1)
 
     def test_run_eval_rejects_non_positive_trial_count(self):
         eval_root = Path(__file__).parents[1] / "evals"

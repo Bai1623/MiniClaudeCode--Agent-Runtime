@@ -93,6 +93,9 @@ class EvalArtifactStore:
     def write_batch_summary(self, batch_dir: Path, summary: dict[str, Any]) -> Path:
         return self.write_json(batch_dir / "trials_summary.json", summary)
 
+    def write_experiment_manifest(self, batch_dir: Path, manifest: dict[str, Any]) -> Path:
+        return self.write_json(batch_dir / "experiment_manifest.json", manifest)
+
 
 def _media_type(path: Path) -> str:
     if path.suffix == ".json":

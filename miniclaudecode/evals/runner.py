@@ -15,6 +15,7 @@ from typing import Any, Callable, Protocol
 
 from .artifacts import EvalArtifactStore
 from .graders import GradeContext, GraderRegistry, changed_workspace_files
+from .manifest import ExperimentManifestBuilder
 from .metrics import build_batch_metrics
 from .models import EvalCase
 
@@ -103,6 +104,7 @@ class EvalBatchResult:
     failed_trials: int
     infrastructure_errors: int
     summary_path: Path
+    manifest_path: Path
     trials: tuple[EvalRunResult, ...]
     metrics: dict[str, Any]
 
@@ -300,9 +302,11 @@ class EvalBatchRunner:
         runner: EvalRunner,
         *,
         clock: Callable[[], datetime] | None = None,
+        manifest_builder: ExperimentManifestBuilder | None = None,
     ) -> None:
         self.runner = runner
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.manifest_builder = manifest_builder or ExperimentManifestBuilder(clock=self.clock)
 
     def run(
         self,
@@ -317,6 +321,8 @@ class EvalBatchRunner:
             raise ValueError("trial_count must be a positive integer.")
         resolved_batch_id = batch_id or self._new_batch_id()
         batch_dir = self.runner.artifact_store.create_batch(case.id, resolved_batch_id)
+        manifest = self.manifest_builder.build(case, trial_count=trial_count)
+        manifest_path = self.runner.artifact_store.write_experiment_manifest(batch_dir, manifest)
         trials = tuple(
             self.runner.run(
                 case,
@@ -344,6 +350,7 @@ class EvalBatchRunner:
             "failed_trials": failed_trials,
             "infrastructure_errors": infrastructure_errors,
             "all_passed": passed_trials == trial_count,
+            "experiment_manifest": manifest_path.relative_to(batch_dir).as_posix(),
             "metrics": metrics,
             "trials": [
                 {
@@ -365,6 +372,7 @@ class EvalBatchRunner:
             failed_trials=failed_trials,
             infrastructure_errors=infrastructure_errors,
             summary_path=summary_path,
+            manifest_path=manifest_path,
             trials=trials,
             metrics=metrics,
         )

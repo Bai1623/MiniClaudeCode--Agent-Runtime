@@ -259,3 +259,7 @@ ask 模式从简单 yes/no 升级为更接近真实产品的权限确认体验�
 ## 2026-09-20：批次评测指标
 
 新增确定性 Eval 指标聚合模块，在批次汇总中输出经验 pass@1、组合估计 pass@k/pass^k，以及 token、成本、耗时、模型/工具调用的 total、mean、P50、P95。基础设施错误保守计入失败并单独统计，缺失价格配置时成本保持 unavailable，避免实验报告产生虚假的零成本结论。
+
+## 2026-09-25：可复现实验 manifest
+
+每个评测批次会在 trial 执行前原子写入 `experiment_manifest.json`，记录 Git commit、分支与 dirty 状态、模型和包版本、规范化配置及 SHA-256、Python/系统环境，以及 EvalCase 哈希、schema、资源限制和超时。配置快照主动排除 API Key，并将随机隔离工作区替换为稳定占位符，使实验身份既可审计又能跨机器比较。

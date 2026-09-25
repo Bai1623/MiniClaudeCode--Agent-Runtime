@@ -180,15 +180,20 @@ class TestEvalRunner(unittest.TestCase):
                 batch_id="batch-one",
             )
             summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
             self.assertTrue(result.all_passed)
             self.assertEqual(result.passed_trials, 3)
+            self.assertTrue(result.manifest_path.is_file())
             self.assertEqual(len(executors), 3)
             self.assertEqual(
                 [trial.trial_id for trial in result.trials],
                 ["trial-001", "trial-002", "trial-003"],
             )
             self.assertEqual(summary["completed_trials"], 3)
+            self.assertEqual(summary["experiment_manifest"], "experiment_manifest.json")
+            self.assertEqual(manifest["evaluation"]["requested_trials"], 3)
+            self.assertEqual(manifest["evaluation"]["case_id"], self.case.id)
             self.assertEqual(summary["metrics"]["pass_metrics"]["pass@1"], 1.0)
             self.assertEqual(result.metrics["pass_metrics"]["pass^k"]["3"], 1.0)
             self.assertEqual(
