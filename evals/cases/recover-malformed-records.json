@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "recover-malformed-records",
+  "task": "日志批处理遇到格式错误的行时会中断。修复解析器，使其跳过空行和畸形记录、继续保留后续有效记录，并让全部测试通过。",
+  "fixture": "malformed_records",
+  "success_criteria": ["坏记录不会终止批处理", "后续有效记录被保留", "正常输入行为不变"],
+  "graders": [
+    {"kind": "no_op", "config": {}},
+    {"kind": "fail_to_pass", "config": {"command": ["{python}", "-m", "unittest", "discover"]}},
+    {"kind": "pass_to_pass", "config": {"command": ["{python}", "-m", "unittest", "test_parser.TestParser.test_parses_valid_records"]}},
+    {"kind": "expected_changes", "config": {"required": ["parser.py"], "allowed": ["parser.py"]}},
+    {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
+  ],
+  "budget": {"max_model_calls": 8, "max_tool_calls": 25, "max_input_tokens": 50000, "max_output_tokens": 10000, "timeout_seconds": 120, "max_cost_usd": 1.0},
+  "tags": ["recovery", "python", "parsing", "development"]
+}

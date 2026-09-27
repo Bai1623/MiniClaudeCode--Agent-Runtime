@@ -63,24 +63,51 @@ class TestEvalCatalog(unittest.TestCase):
         root = Path(__file__).parents[1] / "evals"
         cases = EvalCatalog(root).load()
 
+        self.assertEqual(len(cases), 10)
         self.assertIn("fix-calculator-add", [case.id for case in cases])
         case = next(case for case in cases if case.id == "fix-calculator-add")
         self.assertTrue(case.resolve_fixture(root / "cases").is_dir())
 
-    def test_bug_fix_fixture_starts_with_a_reproducible_failure(self):
+    def test_repository_catalog_covers_target_capabilities(self):
         root = Path(__file__).parents[1] / "evals"
-        case = next(case for case in EvalCatalog(root).load() if case.id == "fix-calculator-add")
+        cases = EvalCatalog(root).load()
+        tags = {tag for case in cases for tag in case.tags}
 
-        completed = subprocess.run(
-            [sys.executable, "-m", "unittest", "discover"],
-            cwd=case.resolve_fixture(root / "cases"),
-            capture_output=True,
-            text=True,
-            timeout=10,
+        self.assertTrue(
+            {"search", "modification", "testing", "recovery", "security", "context"}
+            <= tags
         )
 
-        self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("FAILED", completed.stderr)
+    def test_repository_fixtures_start_with_reproducible_failures(self):
+        root = Path(__file__).parents[1] / "evals"
+        for case in EvalCatalog(root).load():
+            with self.subTest(case=case.id):
+                completed = subprocess.run(
+                    [sys.executable, "-m", "unittest", "discover"],
+                    cwd=case.resolve_fixture(root / "cases"),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("FAILED", completed.stderr)
+
+    def test_repository_fixtures_keep_a_passing_regression_check(self):
+        root = Path(__file__).parents[1] / "evals"
+        for case in EvalCatalog(root).load():
+            spec = next(grader for grader in case.graders if grader.kind == "pass_to_pass")
+            command = list(spec.config["command"])
+            command[0] = sys.executable
+            with self.subTest(case=case.id):
+                completed = subprocess.run(
+                    command,
+                    cwd=case.resolve_fixture(root / "cases"),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_catalog_rejects_duplicate_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:

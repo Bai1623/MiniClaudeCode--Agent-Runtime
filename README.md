@@ -314,7 +314,19 @@ runner 会分别复制只读基线和候选工作区，并把候选初始化为�
 
 每个 trial 还会保存 `transcript.jsonl`、`tool_trajectory.jsonl`、`candidate.diff`、`grader_results.json` 和原始 trace。`artifacts.json` 为全部产物记录相对路径、媒体类型、字节数和 SHA-256，可用于 CI 归档完整性校验以及后续实验回放。
 
-`evals/cases/*.json` 使用版本化 `EvalCase` 协议，明确任务、fixture、成功标准、grader 声明、资源预算和标签。fixture 只能引用 `evals/fixtures/` 下的相对目录，目录穿越、未知字段、重复 ID 和非法预算会在加载阶段失败。当前首个 `fix-calculator-add` 是可重复使用的 Python bug-fix smoke case，已能通过隔离式 runner 执行和评分。
+`evals/cases/*.json` 使用版本化 `EvalCase` 协议，明确任务、fixture、成功标准、grader 声明、资源预算和标签。fixture 只能引用 `evals/fixtures/` 下的相对目录，目录穿越、未知字段、重复 ID 和非法预算会在加载阶段失败。当前 10 个本地案例构成首批能力矩阵：
+
+| 能力维度 | 代表案例 |
+| --- | --- |
+| 搜索定位 | `fix-tax-rounding`、`discover-nested-tests` |
+| 修改与回归 | `fix-calculator-add`、`preserve-order-deduplication` |
+| 测试工程 | `discover-nested-tests` |
+| 失败恢复 | `recover-malformed-records` |
+| 安全边界 | `block-path-traversal`、`redact-nested-secrets` |
+| 上下文理解 | `fix-config-precedence`、`fix-cache-key-context` |
+| 跨文件实现 | `implement-capped-retries` |
+
+每个 fixture 的完整测试套件在基线状态下都可重复失败，同时至少保留一个初始通过的回归测试；grader 再约束预期修改文件和禁止修改测试，从而减少“删测试”或无关重写带来的虚假通过。
 
 内置确定性 grader：
 

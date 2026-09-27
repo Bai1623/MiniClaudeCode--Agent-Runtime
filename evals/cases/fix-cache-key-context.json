@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "fix-cache-key-context",
+  "task": "修复响应缓存串语言的问题。缓存键必须区分 URL、locale 和 tenant，同时保持相同上下文请求命中同一缓存项。",
+  "fixture": "cache_key_context",
+  "success_criteria": ["不同 locale 不冲突", "不同 tenant 不冲突", "相同上下文键稳定"],
+  "graders": [
+    {"kind": "no_op", "config": {}},
+    {"kind": "fail_to_pass", "config": {"command": ["{python}", "-m", "unittest", "discover"]}},
+    {"kind": "pass_to_pass", "config": {"command": ["{python}", "-m", "unittest", "test_cache.TestCacheKey.test_same_context_is_stable"]}},
+    {"kind": "expected_changes", "config": {"required": ["cache.py"], "allowed": ["cache.py"]}},
+    {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
+  ],
+  "budget": {"max_model_calls": 8, "max_tool_calls": 25, "max_input_tokens": 50000, "max_output_tokens": 10000, "timeout_seconds": 120, "max_cost_usd": 1.0},
+  "tags": ["bug-fix", "python", "context", "development"]
+}

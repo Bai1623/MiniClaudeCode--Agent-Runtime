@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "fix-tax-rounding",
+  "task": "订单含小数金额时总价计算错误。请在项目中定位并修复税额舍入逻辑，保持现有函数签名和整数金额行为不变，并让全部测试通过。",
+  "fixture": "tax_rounding",
+  "success_criteria": ["小数税额保留两位", "整数金额回归测试继续通过", "不修改测试文件"],
+  "graders": [
+    {"kind": "no_op", "config": {}},
+    {"kind": "fail_to_pass", "config": {"command": ["{python}", "-m", "unittest", "discover"]}},
+    {"kind": "pass_to_pass", "config": {"command": ["{python}", "-m", "unittest", "test_pricing.TestPricing.test_subtotal"]}},
+    {"kind": "expected_changes", "config": {"required": ["pricing.py"], "allowed": ["pricing.py"]}},
+    {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
+  ],
+  "budget": {"max_model_calls": 8, "max_tool_calls": 25, "max_input_tokens": 50000, "max_output_tokens": 10000, "timeout_seconds": 120, "max_cost_usd": 1.0},
+  "tags": ["bug-fix", "python", "search", "development"]
+}

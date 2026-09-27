@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "fix-config-precedence",
+  "task": "修复配置合并优先级：环境变量必须覆盖用户配置，用户配置必须覆盖默认值。保留 load_settings API，并让全部测试通过。",
+  "fixture": "config_precedence",
+  "success_criteria": ["优先级为 environment > user > defaults", "缺失键仍继承默认值", "只修改实现"],
+  "graders": [
+    {"kind": "no_op", "config": {}},
+    {"kind": "fail_to_pass", "config": {"command": ["{python}", "-m", "unittest", "discover"]}},
+    {"kind": "pass_to_pass", "config": {"command": ["{python}", "-m", "unittest", "test_settings.TestSettings.test_keeps_unoverridden_defaults"]}},
+    {"kind": "expected_changes", "config": {"required": ["settings.py"], "allowed": ["settings.py"]}},
+    {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
+  ],
+  "budget": {"max_model_calls": 8, "max_tool_calls": 25, "max_input_tokens": 50000, "max_output_tokens": 10000, "timeout_seconds": 120, "max_cost_usd": 1.0},
+  "tags": ["bug-fix", "python", "context", "development"]
+}
