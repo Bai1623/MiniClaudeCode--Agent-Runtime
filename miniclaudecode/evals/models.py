@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Any
 
 EVAL_CASE_SCHEMA_VERSION = 1
+EVAL_CASE_SPLITS = ("development", "held-out")
 _CASE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _CASE_KEYS = {
     "schema_version",
     "id",
+    "split",
     "task",
     "fixture",
     "success_criteria",
@@ -108,6 +110,7 @@ class EvalCase:
     graders: tuple[GraderSpec, ...]
     budget: EvalBudget = field(default_factory=EvalBudget)
     tags: tuple[str, ...] = ()
+    split: str = "development"
     schema_version: int = EVAL_CASE_SCHEMA_VERSION
 
     @classmethod
@@ -133,6 +136,10 @@ class EvalCase:
         tags = _string_tuple("tags", values.get("tags", []), required=False)
         if len(set(tags)) != len(tags):
             raise EvalCaseValidationError("tags must not contain duplicates.")
+        split = values.get("split", "development")
+        if split not in EVAL_CASE_SPLITS:
+            allowed = ", ".join(EVAL_CASE_SPLITS)
+            raise EvalCaseValidationError(f"split must be one of: {allowed}.")
         return cls(
             id=case_id,
             task=_require_non_empty_string("task", values.get("task")),
@@ -141,6 +148,7 @@ class EvalCase:
             graders=tuple(GraderSpec.from_dict(item) for item in raw_graders),
             budget=EvalBudget.from_dict(values.get("budget")),
             tags=tags,
+            split=split,
             schema_version=schema_version,
         )
 
@@ -155,6 +163,7 @@ class EvalCase:
         return {
             "schema_version": self.schema_version,
             "id": self.id,
+            "split": self.split,
             "task": self.task,
             "fixture": self.fixture,
             "success_criteria": list(self.success_criteria),

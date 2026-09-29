@@ -51,6 +51,7 @@ class TestExperimentManifest(unittest.TestCase):
             "<isolated-trial-workspace>",
         )
         self.assertEqual(manifest["evaluation"]["case_schema_version"], 1)
+        self.assertEqual(manifest["evaluation"]["split"], "development")
         self.assertEqual(manifest["evaluation"]["requested_trials"], 3)
         self.assertEqual(manifest["evaluation"]["budget"]["timeout_seconds"], 120)
         self.assertTrue(manifest["runtime"]["python_version"])

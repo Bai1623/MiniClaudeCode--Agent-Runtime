@@ -147,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory where evaluation result artifacts are stored.",
     )
     parser.add_argument(
+        "--eval-split",
+        choices=["development", "held-out", "all"],
+        default="development",
+        help="Evaluation split to list or run (default: development).",
+    )
+    parser.add_argument(
         "--trials",
         type=int,
         default=1,
@@ -324,15 +330,23 @@ def list_harness_runs(store: ArtifactStore, output=sys.stdout) -> None:
         print(f"  {run.run_id}  {run.root}", file=output)
 
 
-def list_eval_cases(catalog: EvalCatalog, output=sys.stdout) -> int:
-    cases = catalog.load()
+def list_eval_cases(
+    catalog: EvalCatalog,
+    output=sys.stdout,
+    *,
+    split: str | None = None,
+) -> int:
+    cases = catalog.load(split=split)
     if not cases:
         print("No evaluation cases found.", file=output)
         return 0
     print("Evaluation cases:", file=output)
     for case in cases:
         tags = ", ".join(case.tags) or "untagged"
-        print(f"  {case.id}  graders={len(case.graders)}  tags={tags}", file=output)
+        print(
+            f"  {case.id}  split={case.split}  graders={len(case.graders)}  tags={tags}",
+            file=output,
+        )
     return 0
 
 
@@ -344,7 +358,8 @@ def run_eval(
     output=sys.stdout,
 ) -> int:
     catalog = EvalCatalog(args.eval_root)
-    cases = {case.id: case for case in catalog.load()}
+    selected_split = None if args.eval_split == "all" else args.eval_split
+    cases = {case.id: case for case in catalog.load(split=selected_split)}
     case = cases.get(args.run_eval)
     if case is None:
         available = ", ".join(sorted(cases)) or "none"
@@ -397,6 +412,7 @@ def run_eval(
 
     print(f"Evaluation batch: {result.batch_id}", file=output)
     print(f"Case: {result.case_id}", file=output)
+    print(f"Split: {case.split}", file=output)
     print(f"Trials: {result.passed_trials}/{result.requested_trials} passed", file=output)
     print(f"Infrastructure errors: {result.infrastructure_errors}", file=output)
     pass_metrics = result.metrics["pass_metrics"]
@@ -688,7 +704,11 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.list_evals:
-        return list_eval_cases(EvalCatalog())
+        selected_split = None if args.eval_split == "all" else args.eval_split
+        return list_eval_cases(
+            EvalCatalog(args.eval_root),
+            split=selected_split,
+        )
 
     if args.run_eval:
         return run_eval(args, config)

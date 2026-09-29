@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "id": "discover-nested-tests",
+  "split": "development",
   "task": "测试发现器遗漏了子目录中的测试文件。修复 discover_tests，使其递归发现 test_*.py，返回相对 POSIX 路径并保持确定性排序。",
   "fixture": "nested_test_discovery",
   "success_criteria": ["递归发现嵌套测试", "结果使用相对 POSIX 路径", "结果稳定排序"],
@@ -12,5 +13,5 @@
     {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
   ],
   "budget": {"max_model_calls": 8, "max_tool_calls": 25, "max_input_tokens": 50000, "max_output_tokens": 10000, "timeout_seconds": 120, "max_cost_usd": 1.0},
-  "tags": ["testing", "python", "search", "development"]
+  "tags": ["testing", "python", "search"]
 }

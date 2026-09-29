@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "id": "implement-capped-retries",
+  "split": "held-out",
   "task": "实现跨模块的有上限重试：retry_delays 应生成不超过 cap 的指数退避序列，send_with_retry 应按该序列重试并在成功后立即返回。",
   "fixture": "capped_retries",
   "success_criteria": ["指数退避受 cap 限制", "发送器使用策略模块", "成功后不再重试"],
@@ -12,5 +13,5 @@
     {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
   ],
   "budget": {"max_model_calls": 12, "max_tool_calls": 40, "max_input_tokens": 80000, "max_output_tokens": 16000, "timeout_seconds": 180, "max_cost_usd": 1.5},
-  "tags": ["feature", "python", "cross-file", "development"]
+  "tags": ["feature", "python", "cross-file"]
 }

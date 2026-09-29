@@ -292,6 +292,14 @@ python -m miniclaudecode --git-commit-message --skip-git-tests
 python -m miniclaudecode --list-evals
 ```
 
+默认只展示用于日常调试的 development 集。held-out 集必须显式选择；审计完整目录时可使用 `all`：
+
+```bash
+python -m miniclaudecode --list-evals --eval-split held-out
+python -m miniclaudecode --list-evals --eval-split all
+python -m miniclaudecode --mode auto --run-eval block-path-traversal --eval-split held-out
+```
+
 在一次性临时工作区运行单个案例（真实 Agent 执行需要 API Key，建议使用自动授权模式）：
 
 ```bash
@@ -327,6 +335,8 @@ runner 会分别复制只读基线和候选工作区，并把候选初始化为�
 | 跨文件实现 | `implement-capped-retries` |
 
 每个 fixture 的完整测试套件在基线状态下都可重复失败，同时至少保留一个初始通过的回归测试；grader 再约束预期修改文件和禁止修改测试，从而减少“删测试”或无关重写带来的虚假通过。
+
+任务目录按 7 个 development 和 3 个 held-out 案例拆分。`split` 是版本化 EvalCase 协议的一部分，并贯穿单次 `eval_result.json`、批次 `trials_summary.json` 与 `experiment_manifest.json`；CLI 默认只访问 development，避免日常策略调试无意间消费最终评估集。旧版清单未声明 split 时向后兼容为 development。
 
 内置确定性 grader：
 

@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "id": "block-path-traversal",
+  "split": "held-out",
   "task": "修复 storage.safe_join 的目录穿越漏洞。返回路径必须严格位于指定根目录内，拒绝 .. 逃逸和同前缀兄弟目录，同时保留合法嵌套路径行为。",
   "fixture": "path_traversal",
   "success_criteria": ["拒绝父目录逃逸", "拒绝同前缀目录绕过", "合法嵌套路径可用"],
@@ -12,5 +13,5 @@
     {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
   ],
   "budget": {"max_model_calls": 8, "max_tool_calls": 25, "max_input_tokens": 50000, "max_output_tokens": 10000, "timeout_seconds": 120, "max_cost_usd": 1.0},
-  "tags": ["security", "python", "filesystem", "development"]
+  "tags": ["security", "python", "filesystem"]
 }

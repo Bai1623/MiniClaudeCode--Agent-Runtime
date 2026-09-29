@@ -181,6 +181,7 @@ class TestEvalRunner(unittest.TestCase):
             )
             summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
             manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+            trial_result = json.loads(result.trials[0].artifact_path.read_text(encoding="utf-8"))
 
             self.assertTrue(result.all_passed)
             self.assertEqual(result.passed_trials, 3)
@@ -191,9 +192,12 @@ class TestEvalRunner(unittest.TestCase):
                 ["trial-001", "trial-002", "trial-003"],
             )
             self.assertEqual(summary["completed_trials"], 3)
+            self.assertEqual(summary["split"], "development")
             self.assertEqual(summary["experiment_manifest"], "experiment_manifest.json")
             self.assertEqual(manifest["evaluation"]["requested_trials"], 3)
             self.assertEqual(manifest["evaluation"]["case_id"], self.case.id)
+            self.assertEqual(manifest["evaluation"]["split"], "development")
+            self.assertEqual(trial_result["split"], "development")
             self.assertEqual(summary["metrics"]["pass_metrics"]["pass@1"], 1.0)
             self.assertEqual(result.metrics["pass_metrics"]["pass^k"]["3"], 1.0)
             self.assertEqual(

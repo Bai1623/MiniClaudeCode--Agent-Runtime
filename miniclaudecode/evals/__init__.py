@@ -11,7 +11,14 @@ from .graders import (
 )
 from .manifest import ExperimentManifestBuilder
 from .metrics import build_batch_metrics
-from .models import EvalBudget, EvalCase, EvalCaseValidationError, GraderSpec, load_eval_case
+from .models import (
+    EVAL_CASE_SPLITS,
+    EvalBudget,
+    EvalCase,
+    EvalCaseValidationError,
+    GraderSpec,
+    load_eval_case,
+)
 from .runner import (
     AgentCandidateExecutor,
     CandidateExecution,
@@ -24,6 +31,7 @@ from .runner import (
 
 __all__ = [
     "EvalBudget",
+    "EVAL_CASE_SPLITS",
     "EvalArtifactStore",
     "EvalCase",
     "EvalCaseValidationError",

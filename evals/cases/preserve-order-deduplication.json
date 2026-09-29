@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "id": "preserve-order-deduplication",
+  "split": "development",
   "task": "修复 deduplicate，使其删除重复项时保留首次出现顺序，并继续支持不可哈希的字典记录。不得通过排序改变业务顺序。",
   "fixture": "stable_dedup",
   "success_criteria": ["保留首次出现顺序", "支持字典记录", "不修改输入列表"],
@@ -12,5 +13,5 @@
     {"kind": "forbidden_changes", "config": {"patterns": ["test*.py", ".git/**"]}}
   ],
   "budget": {"max_model_calls": 8, "max_tool_calls": 25, "max_input_tokens": 50000, "max_output_tokens": 10000, "timeout_seconds": 120, "max_cost_usd": 1.0},
-  "tags": ["bug-fix", "python", "modification", "development"]
+  "tags": ["bug-fix", "python", "modification"]
 }

@@ -61,6 +61,7 @@ class ExperimentManifestBuilder:
             },
             "evaluation": {
                 "case_id": case.id,
+                "split": case.split,
                 "case_schema_version": case.schema_version,
                 "case_sha256": _fingerprint(case_values),
                 "fixture": case.fixture,

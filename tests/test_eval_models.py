@@ -29,6 +29,7 @@ class TestEvalCase(unittest.TestCase):
         case = EvalCase.from_dict(self.make_values())
 
         self.assertEqual(case.id, "fix-example")
+        self.assertEqual(case.split, "development")
         self.assertEqual(case.budget.max_model_calls, 3)
         self.assertEqual(EvalCase.from_dict(case.to_dict()), case)
 
@@ -57,6 +58,13 @@ class TestEvalCase(unittest.TestCase):
         with self.assertRaisesRegex(EvalCaseValidationError, "duplicates"):
             EvalCase.from_dict(values)
 
+    def test_rejects_unknown_split(self):
+        values = self.make_values()
+        values["split"] = "private"
+
+        with self.assertRaisesRegex(EvalCaseValidationError, "split must be one of"):
+            EvalCase.from_dict(values)
+
 
 class TestEvalCatalog(unittest.TestCase):
     def test_repository_catalog_loads_portable_fixture(self):
@@ -77,6 +85,20 @@ class TestEvalCatalog(unittest.TestCase):
             {"search", "modification", "testing", "recovery", "security", "context"}
             <= tags
         )
+
+    def test_repository_catalog_filters_disjoint_splits(self):
+        root = Path(__file__).parents[1] / "evals"
+        catalog = EvalCatalog(root)
+        development = {case.id for case in catalog.load(split="development")}
+        held_out = {case.id for case in catalog.load(split="held-out")}
+
+        self.assertEqual(len(development), 7)
+        self.assertEqual(len(held_out), 3)
+        self.assertFalse(development & held_out)
+        self.assertEqual(development | held_out, {case.id for case in catalog.load()})
+
+        with self.assertRaisesRegex(EvalCaseValidationError, "split must be one of"):
+            catalog.load(split="unknown")
 
     def test_repository_fixtures_start_with_reproducible_failures(self):
         root = Path(__file__).parents[1] / "evals"

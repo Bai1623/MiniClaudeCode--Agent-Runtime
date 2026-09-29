@@ -47,6 +47,8 @@ class TestCliHarnessOptions(unittest.TestCase):
             "custom-evals",
             "--eval-runs-dir",
             "custom-runs",
+            "--eval-split",
+            "all",
             "--trials",
             "3",
         ])
@@ -54,6 +56,7 @@ class TestCliHarnessOptions(unittest.TestCase):
         self.assertEqual(args.run_eval, "fix-calculator-add")
         self.assertEqual(args.eval_root, "custom-evals")
         self.assertEqual(args.eval_runs_dir, "custom-runs")
+        self.assertEqual(args.eval_split, "all")
         self.assertEqual(args.trials, 3)
 
     def test_parser_accepts_product_commands(self):
@@ -164,6 +167,7 @@ class TestCliHarnessOptions(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("fix-calculator-add", output.getvalue())
+        self.assertIn("split=development", output.getvalue())
         self.assertIn("graders=5", output.getvalue())
 
     def test_run_eval_executes_case_and_prints_artifact(self):
@@ -201,11 +205,27 @@ class TestCliHarnessOptions(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertIn("Trials: 1/1 passed", output.getvalue())
+            self.assertIn("Split: development", output.getvalue())
             self.assertIn("Pass metrics: pass@1=1.0", output.getvalue())
             self.assertIn("Manifest:", output.getvalue())
             self.assertEqual(len(list(Path(tmpdir).rglob("eval_result.json"))), 1)
             self.assertEqual(len(list(Path(tmpdir).rglob("trials_summary.json"))), 1)
             self.assertEqual(len(list(Path(tmpdir).rglob("experiment_manifest.json"))), 1)
+
+    def test_run_eval_requires_explicit_held_out_split(self):
+        eval_root = Path(__file__).parents[1] / "evals"
+        args = build_parser().parse_args([
+            "--run-eval",
+            "block-path-traversal",
+            "--eval-root",
+            str(eval_root),
+        ])
+
+        with redirect_stderr(StringIO()) as error:
+            exit_code = run_eval(args, Config(), executor=object())
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("unknown evaluation case", error.getvalue())
 
     def test_run_eval_rejects_non_positive_trial_count(self):
         eval_root = Path(__file__).parents[1] / "evals"

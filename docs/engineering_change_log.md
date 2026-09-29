@@ -267,3 +267,7 @@ ask 模式从简单 yes/no 升级为更接近真实产品的权限确认体验�
 ## 2026-09-27：首批 Coding Agent 评测任务矩阵
 
 离线评测集从单一 smoke case 扩展到 10 个可移植 fixture，覆盖搜索定位、代码修改、测试发现、异常恢复、路径穿越、递归脱敏、上下文缓存键和跨文件重试策略。仓库级契约测试保证每个案例基线可重复失败、至少一个既有行为测试保持通过，并通过 expected/forbidden changes 约束投机式修改，使指标开始反映多维能力而非单题表现。
+
+## 2026-09-29：Development / held-out 评测隔离
+
+EvalCase 协议新增向后兼容的 `split` 字段，将 10 个任务拆分为 7 个 development 与 3 个 held-out。Catalog 支持严格过滤，CLI 默认仅暴露 development，运行 held-out 必须显式选择；split 同时进入 trial result、批次 summary 和 experiment manifest，确保实验结果离开原目录后仍能识别数据集身份，降低围绕公开开发题反复调参造成的过拟合风险。
