@@ -271,3 +271,7 @@ ask 模式从简单 yes/no 升级为更接近真实产品的权限确认体验�
 ## 2026-09-29：Development / held-out 评测隔离
 
 EvalCase 协议新增向后兼容的 `split` 字段，将 10 个任务拆分为 7 个 development 与 3 个 held-out。Catalog 支持严格过滤，CLI 默认仅暴露 development，运行 held-out 必须显式选择；split 同时进入 trial result、批次 summary 和 experiment manifest，确保实验结果离开原目录后仍能识别数据集身份，降低围绕公开开发题反复调参造成的过拟合风险。
+
+## 2026-09-30：Baseline / experiment 对比报告
+
+新增批次对比模块和 CLI，读取两个 `trials_summary.json` 及可选实验 manifest，校验 case、split 与可用案例指纹，比较 pass@1/pass@k/pass^k、token、成本、延迟、工具调用和错误率。报告为每项指标给出绝对差、相对变化、优化方向和状态；缺失值保持 unavailable，模型/配置差异作为报告提示，最终同时生成 JSON 与 Markdown，支持审阅策略迭代的收益与回退。

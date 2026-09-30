@@ -27,6 +27,8 @@ from .evals import (
     EvalCatalog,
     EvalRunner,
     ExperimentManifestBuilder,
+    compare_eval_batches,
+    write_comparison_reports,
 )
 from .harness.artifacts import ArtifactStore
 from .harness.evaluator import Evaluator
@@ -151,6 +153,17 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["development", "held-out", "all"],
         default="development",
         help="Evaluation split to list or run (default: development).",
+    )
+    parser.add_argument(
+        "--compare-evals",
+        nargs=2,
+        metavar=("BASELINE_SUMMARY", "EXPERIMENT_SUMMARY"),
+        help="Compare two trials_summary.json files and write JSON and Markdown reports.",
+    )
+    parser.add_argument(
+        "--comparison-output",
+        default="eval_comparison",
+        help="Output filename prefix for --compare-evals (default: eval_comparison).",
     )
     parser.add_argument(
         "--trials",
@@ -347,6 +360,22 @@ def list_eval_cases(
             f"  {case.id}  split={case.split}  graders={len(case.graders)}  tags={tags}",
             file=output,
         )
+    return 0
+
+
+def compare_eval_runs(args: argparse.Namespace, output=sys.stdout) -> int:
+    try:
+        comparison = compare_eval_batches(*args.compare_evals)
+        json_path, markdown_path = write_comparison_reports(
+            comparison,
+            args.comparison_output,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    print(f"Comparison outcome: {comparison['outcome']}", file=output)
+    print(f"JSON report: {json_path}", file=output)
+    print(f"Markdown report: {markdown_path}", file=output)
     return 0
 
 
@@ -709,6 +738,9 @@ def _main(argv: list[str] | None = None) -> int:
             EvalCatalog(args.eval_root),
             split=selected_split,
         )
+
+    if args.compare_evals:
+        return compare_eval_runs(args)
 
     if args.run_eval:
         return run_eval(args, config)

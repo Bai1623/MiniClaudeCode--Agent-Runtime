@@ -338,6 +338,17 @@ runner 会分别复制只读基线和候选工作区，并把候选初始化为�
 
 任务目录按 7 个 development 和 3 个 held-out 案例拆分。`split` 是版本化 EvalCase 协议的一部分，并贯穿单次 `eval_result.json`、批次 `trials_summary.json` 与 `experiment_manifest.json`；CLI 默认只访问 development，避免日常策略调试无意间消费最终评估集。旧版清单未声明 split 时向后兼容为 development。
 
+对比同一 case/split 的两个批次时，直接传入它们的汇总文件。系统会校验 case 身份和可用的 EvalCase 指纹，计算核心通过率、token、成本、耗时、工具调用和错误率的变化，并区分改善、回退、持平与不可用；模型或配置不同会作为解释性提示保留。缺少成本等指标时显示 `unavailable`，不会按零参与判断。
+
+```bash
+python -m miniclaudecode --compare-evals \
+  .miniclaudecode/evals/fix-calculator-add/baseline/trials_summary.json \
+  .miniclaudecode/evals/fix-calculator-add/experiment/trials_summary.json \
+  --comparison-output reports/calculator-v2
+```
+
+命令会生成 `reports/calculator-v2.json` 和 `reports/calculator-v2.md`。`outcome` 汇总可用指标的方向：`improved`、`regressed`、`mixed`、`unchanged` 或 `insufficient_data`；相对变化在 baseline 为零时标记为不可用。
+
 内置确定性 grader：
 
 - `no_op`：对基线与候选工作区生成内容指纹，排除缓存等运行产物后必须存在实质变化。

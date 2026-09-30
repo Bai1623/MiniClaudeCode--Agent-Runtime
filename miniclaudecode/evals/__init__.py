@@ -2,6 +2,7 @@
 
 from .artifacts import EvalArtifactStore
 from .catalog import EvalCatalog
+from .comparison import compare_eval_batches, render_comparison_markdown, write_comparison_reports
 from .graders import (
     EvalGradeReport,
     GradeContext,
@@ -36,6 +37,9 @@ __all__ = [
     "EvalCase",
     "EvalCaseValidationError",
     "EvalCatalog",
+    "compare_eval_batches",
+    "render_comparison_markdown",
+    "write_comparison_reports",
     "EvalGradeReport",
     "ExperimentManifestBuilder",
     "EvalBatchResult",
