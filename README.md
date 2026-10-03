@@ -322,6 +322,8 @@ runner 会分别复制只读基线和候选工作区，并把候选初始化为�
 
 每个 trial 还会保存 `transcript.jsonl`、`tool_trajectory.jsonl`、`candidate.diff`、`grader_results.json` 和原始 trace。`artifacts.json` 为全部产物记录相对路径、媒体类型、字节数和 SHA-256，可用于 CI 归档完整性校验以及后续实验回放。
 
+CI 会在每个 development 案例上运行一次确定性的 no-op 校准，不调用模型/API，并要求 grader 能拒绝未修复候选、识别已知失败测试且保留通过中的回归测试。批次摘要、实验 manifest、trial 结果和 grader 证据会作为 CI artifact 保存 14 天。需要真实 Claude API smoke eval 时，在 GitHub Actions 手动运行 `CI`、勾选 `run_claude_api_smoke`，并配置 `ANTHROPIC_API_KEY` repository secret；常规 push/PR 不会调用外部模型。
+
 `evals/cases/*.json` 使用版本化 `EvalCase` 协议，明确任务、fixture、成功标准、grader 声明、资源预算和标签。fixture 只能引用 `evals/fixtures/` 下的相对目录，目录穿越、未知字段、重复 ID 和非法预算会在加载阶段失败。当前 10 个本地案例构成首批能力矩阵：
 
 | 能力维度 | 代表案例 |

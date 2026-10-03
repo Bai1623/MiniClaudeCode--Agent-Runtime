@@ -3,6 +3,13 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_claude_api_smoke:
+        description: Run one real Claude API eval (requires ANTHROPIC_API_KEY secret)
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   check:
@@ -37,6 +44,29 @@ jobs:
         run: |
           python -m coverage run -m unittest discover
           python -m coverage report
+
+      - name: Run deterministic offline eval calibration
+        run: python scripts/run_eval_ci.py
+
+      - name: Upload offline eval evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-eval-evidence-python-${{ matrix.python-version }}
+          path: .miniclaudecode/evals/ci-validation/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Optional Claude API smoke eval
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_claude_api_smoke }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Set the ANTHROPIC_API_KEY repository secret before enabling the API smoke eval."
+            exit 1
+          fi
+          python -m miniclaudecode --mode auto --run-eval fix-calculator-add --eval-split development
 
       - name: Build package
         run: python -m build
