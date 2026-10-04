@@ -77,21 +77,28 @@ def build_batch_metrics(trials: Sequence[EvalRunResult]) -> dict[str, Any]:
                 for result in results
             )
 
-    infrastructure_errors = sum(trial.status == "infrastructure_error" for trial in trials)
-    task_failures = sum(trial.status == "failed" for trial in trials)
+    failure_categories = [_failure_category(trial) for trial in trials]
+    agent_failures = sum(category == "agent" for category in failure_categories)
+    grader_errors = sum(category == "grader" for category in failure_categories)
+    infrastructure_errors = sum(category == "infrastructure" for category in failure_categories)
+    pass_interval = _wilson_interval(successes, sample_size)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "sample_size": sample_size,
         "successes": successes,
         "definitions": {
             "pass@k": "Probability of at least one success in k samples without replacement.",
             "pass^k": "Probability that all k samples succeed without replacement.",
             "infrastructure_errors": "Counted as unsuccessful in pass metrics and reported separately.",
+            "confidence_intervals": "Two-sided 95% Wilson score intervals for binomial trial rates.",
+            "agent_failures": "Candidate execution errors or completed candidates rejected by graders.",
+            "grader_errors": "Exceptions raised while executing the grader pipeline.",
             "total_tokens": "Input + output + cache-read tokens.",
             "estimated_cost_usd": "Available only for trials where every model call has a cost estimate.",
         },
         "pass_metrics": {
             "pass@1": _ratio(successes, sample_size),
+            "pass@1_confidence_interval": pass_interval,
             "pass@k": pass_at_k,
             "pass^k": pass_power_k,
         },
@@ -116,10 +123,61 @@ def build_batch_metrics(trials: Sequence[EvalRunResult]) -> dict[str, Any]:
         },
         "errors": {
             "trial_failure_rate": _ratio(sample_size - successes, sample_size),
-            "task_failure_rate": _ratio(task_failures, sample_size),
+            "task_failure_rate": _ratio(agent_failures, sample_size),
+            "agent_failure_rate": _ratio(agent_failures, sample_size),
+            "agent_failure_confidence_interval": _wilson_interval(agent_failures, sample_size),
+            "grader_error_rate": _ratio(grader_errors, sample_size),
+            "grader_error_confidence_interval": _wilson_interval(grader_errors, sample_size),
             "infrastructure_error_rate": _ratio(infrastructure_errors, sample_size),
+            "infrastructure_error_confidence_interval": _wilson_interval(
+                infrastructure_errors, sample_size
+            ),
             "grader_failure_rate": _ratio(grader_failures, grader_results),
+            "grader_assertion_failure_rate": _ratio(grader_failures, grader_results),
         },
+    }
+
+
+def _failure_category(trial: EvalRunResult) -> str | None:
+    if trial.failure_category is not None:
+        return trial.failure_category
+    if trial.status == "failed":
+        return "agent"
+    if trial.status == "agent_error":
+        return "agent"
+    if trial.status == "grader_error":
+        return "grader"
+    if trial.status == "infrastructure_error":
+        return "infrastructure"
+    return None
+
+
+def _wilson_interval(successes: int, sample_size: int) -> dict[str, Any]:
+    confidence_level = 0.95
+    if sample_size <= 0:
+        return {
+            "method": "wilson_score",
+            "confidence_level": confidence_level,
+            "lower": None,
+            "upper": None,
+        }
+    z = 1.959963984540054
+    proportion = successes / sample_size
+    denominator = 1 + z * z / sample_size
+    center = (proportion + z * z / (2 * sample_size)) / denominator
+    margin = (
+        z
+        * math.sqrt(
+            proportion * (1 - proportion) / sample_size
+            + z * z / (4 * sample_size * sample_size)
+        )
+        / denominator
+    )
+    return {
+        "method": "wilson_score",
+        "confidence_level": confidence_level,
+        "lower": _rounded(max(0.0, center - margin)),
+        "upper": _rounded(min(1.0, center + margin)),
     }
 
 

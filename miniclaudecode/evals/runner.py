@@ -19,7 +19,7 @@ from .manifest import ExperimentManifestBuilder
 from .metrics import build_batch_metrics
 from .models import EvalCase
 
-EVAL_RESULT_SCHEMA_VERSION = 1
+EVAL_RESULT_SCHEMA_VERSION = 2
 
 
 class CandidateExecutor(Protocol):
@@ -93,6 +93,7 @@ class EvalRunResult:
     passed: bool
     artifact_path: Path
     changed_files: tuple[str, ...]
+    failure_category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,8 @@ class EvalBatchResult:
     requested_trials: int
     passed_trials: int
     failed_trials: int
+    agent_failures: int
+    grader_failures: int
     infrastructure_errors: int
     summary_path: Path
     manifest_path: Path
@@ -147,6 +150,7 @@ class EvalRunner:
         started_at = self.clock()
         started = time.monotonic()
         status = "infrastructure_error"
+        failure_category: str | None = "infrastructure"
         passed = False
         changed_files: tuple[str, ...] = ()
         execution: dict[str, Any] = {"status": "not_started"}
@@ -194,7 +198,17 @@ class EvalRunner:
                 grade_report = report.to_dict()
                 passed = report.passed
                 status = "passed" if passed else "failed"
+                failure_category = None if passed else "agent"
         except Exception as exc:
+            failure_category = {
+                "candidate_execution": "agent",
+                "grading": "grader",
+            }.get(stage, "infrastructure")
+            status = {
+                "agent": "agent_error",
+                "grader": "grader_error",
+                "infrastructure": "infrastructure_error",
+            }[failure_category]
             failure = {
                 "stage": stage,
                 "error_type": type(exc).__name__,
@@ -225,6 +239,7 @@ class EvalRunner:
             "split": case.split,
             "status": status,
             "passed": passed,
+            "failure_category": failure_category,
             "started_at": _isoformat(started_at),
             "ended_at": _isoformat(ended_at),
             "duration_ms": round((time.monotonic() - started) * 1000, 3),
@@ -252,6 +267,7 @@ class EvalRunner:
             passed=passed,
             artifact_path=artifact_path,
             changed_files=changed_files,
+            failure_category=failure_category,
         )
 
     def _new_trial_id(self) -> str:
@@ -335,14 +351,15 @@ class EvalBatchRunner:
             for index in range(1, trial_count + 1)
         )
         passed_trials = sum(result.passed for result in trials)
+        agent_failures = sum(result.failure_category == "agent" for result in trials)
+        grader_failures = sum(result.failure_category == "grader" for result in trials)
         infrastructure_errors = sum(
-            result.status == "infrastructure_error"
-            for result in trials
+            result.failure_category == "infrastructure" for result in trials
         )
-        failed_trials = trial_count - passed_trials - infrastructure_errors
+        failed_trials = agent_failures + grader_failures
         metrics = build_batch_metrics(trials)
         summary = {
-            "schema_version": 1,
+            "schema_version": 2,
             "batch_id": resolved_batch_id,
             "case_id": case.id,
             "split": case.split,
@@ -350,6 +367,8 @@ class EvalBatchRunner:
             "completed_trials": len(trials),
             "passed_trials": passed_trials,
             "failed_trials": failed_trials,
+            "agent_failures": agent_failures,
+            "grader_failures": grader_failures,
             "infrastructure_errors": infrastructure_errors,
             "all_passed": passed_trials == trial_count,
             "experiment_manifest": manifest_path.relative_to(batch_dir).as_posix(),
@@ -360,6 +379,7 @@ class EvalBatchRunner:
                     "trial_id": result.trial_id,
                     "status": result.status,
                     "passed": result.passed,
+                    "failure_category": result.failure_category,
                     "result": result.artifact_path.relative_to(batch_dir).as_posix(),
                 }
                 for index, result in enumerate(trials, start=1)
@@ -372,6 +392,8 @@ class EvalBatchRunner:
             requested_trials=trial_count,
             passed_trials=passed_trials,
             failed_trials=failed_trials,
+            agent_failures=agent_failures,
+            grader_failures=grader_failures,
             infrastructure_errors=infrastructure_errors,
             summary_path=summary_path,
             manifest_path=manifest_path,

@@ -314,7 +314,7 @@ python -m miniclaudecode --mode auto --run-eval fix-calculator-add --trials 3
 
 批量模式会为每次 trial 创建新的 Agent、临时 Git 仓库和产物目录。单次基础设施错误不会阻断剩余 trial；批次级 `trials_summary.json` 会记录稳定的 `trial-001` 等标识、每次状态和结果路径，并分别汇总通过、任务失败与基础设施错误数量。
 
-`trials_summary.json` 同时提供标准化指标：经验 `pass@1`、无放回组合估计 `pass@k = 1 - C(n-c,k)/C(n,k)`、严格连续成功指标 `pass^k = C(c,k)/C(n,k)`，以及 token、估算成本、trial 耗时、模型/工具调用数的 total、mean、P50、P95。基础设施错误会保守计入未通过并单独报告；未配置模型价格时，成本标记为不可用而不是错误地记为 0。
+`trials_summary.json` 同时提供标准化指标：经验 `pass@1`、无放回组合估计 `pass@k = 1 - C(n-c,k)/C(n,k)`、严格连续成功指标 `pass^k = C(c,k)/C(n,k)`，以及 token、估算成本、trial 耗时、模型/工具调用数的 total、mean、P50、P95。`pass@1` 和各类 trial 失败率附带 Wilson 95% 置信区间，避免小样本点估计造成过度解读。失败被拆分为 Agent 失败（候选执行异常或未通过验收）、grader 失败（评测流程自身异常）和基础设施失败（工作区准备等系统问题）；三类失败都会保守计入未通过。grader 断言未通过率单独统计，不与 grader 自身异常混淆。未配置模型价格时，成本标记为不可用而不是错误地记为 0。
 
 每个批次还会在执行 trial 之前写入 `experiment_manifest.json`，固化 Git commit、分支与 dirty 状态、miniClaudeCode/模型版本、脱敏后的规范化配置及其 SHA-256、Python/操作系统信息，以及 EvalCase 哈希、schema 和资源预算。临时工作区路径会替换为稳定占位符，API Key 不进入快照，因此同一配置可跨机器比较且不会泄露凭据。
 

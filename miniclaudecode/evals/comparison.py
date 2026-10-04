@@ -18,9 +18,10 @@ _METRIC_SPECS = (
     ("latency.trial_duration_ms.p95", "P95 trial duration (ms)", "lower"),
     ("tools.calls_per_trial.mean", "Mean tool calls per trial", "lower"),
     ("tools.error_rate", "Tool error rate", "lower"),
-    ("errors.task_failure_rate", "Task failure rate", "lower"),
+    ("errors.agent_failure_rate", "Agent failure rate", "lower"),
+    ("errors.grader_error_rate", "Grader error rate", "lower"),
     ("errors.infrastructure_error_rate", "Infrastructure error rate", "lower"),
-    ("errors.grader_failure_rate", "Grader failure rate", "lower"),
+    ("errors.grader_assertion_failure_rate", "Grader assertion failure rate", "lower"),
 )
 
 
@@ -81,6 +82,14 @@ def compare_eval_batches(baseline_path: str | Path, experiment_path: str | Path)
             "experiment": _batch_identity(experiment),
         },
         "metrics": metrics,
+        "confidence_intervals": {
+            "baseline_pass@1": _get_path(
+                baseline_metrics, "pass_metrics.pass@1_confidence_interval"
+            ),
+            "experiment_pass@1": _get_path(
+                experiment_metrics, "pass_metrics.pass@1_confidence_interval"
+            ),
+        },
         "warnings": warnings,
         "inputs": {
             "baseline_summary": str(baseline_file),
@@ -112,6 +121,19 @@ def render_comparison_markdown(comparison: dict[str, Any]) -> str:
             f"| {metric['label']} | {_format_value(metric['baseline'])} | "
             f"{_format_value(metric['experiment'])} | {_format_value(metric['delta'])} | "
             f"{metric['status']} |"
+        )
+    intervals = comparison.get("confidence_intervals", {})
+    baseline_interval = _format_interval(intervals.get("baseline_pass@1"))
+    experiment_interval = _format_interval(intervals.get("experiment_pass@1"))
+    if baseline_interval or experiment_interval:
+        lines.extend(
+            (
+                "",
+                "## Pass@1 uncertainty",
+                "",
+                f"- Baseline 95% Wilson CI: {baseline_interval or 'unavailable'}",
+                f"- Experiment 95% Wilson CI: {experiment_interval or 'unavailable'}",
+            )
         )
     lines.extend(("", "## Run identity", ""))
     for label, batch in (("Baseline", baseline), ("Experiment", experiment)):
@@ -224,6 +246,15 @@ def _compare_metric(
         label = f"{label} (k={pass_k})"
     baseline_value = _get_path(baseline, metric_path)
     experiment_value = _get_path(experiment, metric_path)
+    fallback_path = {
+        "errors.agent_failure_rate": "errors.task_failure_rate",
+        "errors.grader_assertion_failure_rate": "errors.grader_failure_rate",
+    }.get(metric_path)
+    if fallback_path is not None:
+        if baseline_value is None:
+            baseline_value = _get_path(baseline, fallback_path)
+        if experiment_value is None:
+            experiment_value = _get_path(experiment, fallback_path)
     if _is_number(baseline_value) and _is_number(experiment_value):
         baseline_number = float(baseline_value)
         experiment_number = float(experiment_value)
@@ -286,6 +317,21 @@ def _format_value(value: Any) -> str:
     if isinstance(value, float):
         return f"{value:.6g}"
     return str(value)
+
+
+def _format_interval(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    lower = value.get("lower")
+    upper = value.get("upper")
+    if (
+        isinstance(lower, bool)
+        or not isinstance(lower, (int, float))
+        or isinstance(upper, bool)
+        or not isinstance(upper, (int, float))
+    ):
+        return None
+    return f"[{lower:.4f}, {upper:.4f}]"
 
 
 def _atomic_write(path: Path, content: str) -> None:

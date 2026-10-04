@@ -443,13 +443,22 @@ def run_eval(
     print(f"Case: {result.case_id}", file=output)
     print(f"Split: {case.split}", file=output)
     print(f"Trials: {result.passed_trials}/{result.requested_trials} passed", file=output)
-    print(f"Infrastructure errors: {result.infrastructure_errors}", file=output)
+    print(
+        f"Failures: agent={result.agent_failures}, grader={result.grader_failures}, "
+        f"infrastructure={result.infrastructure_errors}",
+        file=output,
+    )
     pass_metrics = result.metrics["pass_metrics"]
+    pass_interval = pass_metrics["pass@1_confidence_interval"]
     k = str(result.requested_trials)
     print(
         f"Pass metrics: pass@1={pass_metrics['pass@1']}, "
         f"pass@{k}={pass_metrics['pass@k'][k]}, "
         f"pass^{k}={pass_metrics['pass^k'][k]}",
+        file=output,
+    )
+    print(
+        f"Pass@1 95% Wilson CI: [{pass_interval['lower']}, {pass_interval['upper']}]",
         file=output,
     )
     print(f"Summary: {result.summary_path}", file=output)

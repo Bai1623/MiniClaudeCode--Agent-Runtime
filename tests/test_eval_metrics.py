@@ -24,6 +24,15 @@ class TestEvalMetrics(unittest.TestCase):
 
         self.assertEqual(metrics["sample_size"], 3)
         self.assertEqual(metrics["pass_metrics"]["pass@1"], 0.666667)
+        self.assertEqual(
+            metrics["pass_metrics"]["pass@1_confidence_interval"],
+            {
+                "method": "wilson_score",
+                "confidence_level": 0.95,
+                "lower": 0.20766,
+                "upper": 0.938508,
+            },
+        )
         self.assertEqual(metrics["pass_metrics"]["pass@k"]["2"], 1.0)
         self.assertEqual(metrics["pass_metrics"]["pass^k"]["2"], 0.333333)
         self.assertEqual(metrics["usage"]["input_tokens"]["total"], 60.0)
@@ -35,8 +44,11 @@ class TestEvalMetrics(unittest.TestCase):
         self.assertEqual(metrics["tools"]["total_calls"], 3)
         self.assertEqual(metrics["tools"]["error_rate"], 0.333333)
         self.assertEqual(metrics["errors"]["task_failure_rate"], 0.333333)
+        self.assertEqual(metrics["errors"]["agent_failure_rate"], 0.333333)
+        self.assertEqual(metrics["errors"]["grader_error_rate"], 0.0)
         self.assertEqual(metrics["errors"]["infrastructure_error_rate"], 0.0)
         self.assertEqual(metrics["errors"]["grader_failure_rate"], 0.166667)
+        self.assertEqual(metrics["errors"]["grader_assertion_failure_rate"], 0.166667)
 
     def test_missing_price_is_reported_as_unavailable_not_zero(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -51,10 +63,48 @@ class TestEvalMetrics(unittest.TestCase):
         self.assertIsNone(cost["total"])
         self.assertEqual(metrics["pass_metrics"]["pass@1"], 0.0)
         self.assertEqual(metrics["errors"]["infrastructure_error_rate"], 1.0)
+        self.assertEqual(
+            metrics["errors"]["infrastructure_error_confidence_interval"]["upper"],
+            1.0,
+        )
 
     def test_requires_at_least_one_trial(self):
         with self.assertRaisesRegex(ValueError, "At least one trial"):
             build_batch_metrics(())
+
+    def test_separates_agent_grader_and_infrastructure_failures(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            trials = tuple(
+                self._trial(
+                    root,
+                    index,
+                    status,
+                    False,
+                    10,
+                    0,
+                    0,
+                    0,
+                    None,
+                    [],
+                    [],
+                    failure_category=category,
+                )
+                for index, (status, category) in enumerate(
+                    (
+                        ("failed", "agent"),
+                        ("grader_error", "grader"),
+                        ("infrastructure_error", "infrastructure"),
+                    ),
+                    start=1,
+                )
+            )
+
+            metrics = build_batch_metrics(trials)
+
+        self.assertEqual(metrics["errors"]["agent_failure_rate"], 0.333333)
+        self.assertEqual(metrics["errors"]["grader_error_rate"], 0.333333)
+        self.assertEqual(metrics["errors"]["infrastructure_error_rate"], 0.333333)
 
     def _trial(
         self,
@@ -69,6 +119,7 @@ class TestEvalMetrics(unittest.TestCase):
         cost: float | None,
         tool_statuses: list[str],
         grader_statuses: list[bool],
+        failure_category: str | None = None,
     ) -> EvalRunResult:
         trial_dir = root / f"trial-{index:03d}"
         trace_dir = trial_dir / "traces"
@@ -100,6 +151,7 @@ class TestEvalMetrics(unittest.TestCase):
             passed=passed,
             artifact_path=result_path,
             changed_files=(),
+            failure_category=failure_category,
         )
 
 

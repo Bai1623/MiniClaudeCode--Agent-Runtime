@@ -51,6 +51,11 @@ class FailingExecutor:
         raise RuntimeError("candidate crashed")
 
 
+class FailingGraderRegistry:
+    def grade(self, case, context):
+        raise RuntimeError("grader crashed")
+
+
 class RecordingAgent:
     def __init__(self, workspace: Path) -> None:
         self.workspace = workspace
@@ -122,7 +127,7 @@ class TestEvalRunner(unittest.TestCase):
             self.assertTrue(result.passed)
             self.assertEqual(result.status, "passed")
             self.assertEqual(result.changed_files, ("calculator.py",))
-            self.assertEqual(payload["schema_version"], 1)
+            self.assertEqual(payload["schema_version"], 2)
             self.assertEqual(payload["isolation_mode"], "temporary_git_repository")
             self.assertTrue(payload["grade_report"]["passed"])
             self.assertEqual(payload["execution"]["metadata"]["timeout_seconds"], 120)
@@ -212,7 +217,7 @@ class TestEvalRunner(unittest.TestCase):
             self.assertEqual(len(set(workspaces)), 3)
             self.assertFalse(any(workspace.exists() for workspace in workspaces))
 
-    def test_batch_runner_keeps_running_after_trial_infrastructure_error(self):
+    def test_batch_runner_keeps_running_after_agent_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = EvalRunner(
                 artifact_store=EvalArtifactStore(Path(tmpdir) / "artifacts"),
@@ -230,8 +235,10 @@ class TestEvalRunner(unittest.TestCase):
 
             self.assertFalse(result.all_passed)
             self.assertEqual(result.passed_trials, 1)
-            self.assertEqual(result.infrastructure_errors, 1)
-            self.assertEqual([trial.status for trial in result.trials], ["infrastructure_error", "passed"])
+            self.assertEqual(result.agent_failures, 1)
+            self.assertEqual(result.grader_failures, 0)
+            self.assertEqual(result.infrastructure_errors, 0)
+            self.assertEqual([trial.status for trial in result.trials], ["agent_error", "passed"])
 
     def test_batch_runner_rejects_non_positive_trial_count(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -248,7 +255,7 @@ class TestEvalRunner(unittest.TestCase):
                     trial_count=0,
                 )
 
-    def test_executor_failure_is_persisted_as_infrastructure_error(self):
+    def test_executor_failure_is_classified_as_agent_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = EvalRunner(
                 artifact_store=EvalArtifactStore(Path(tmpdir) / "artifacts"),
@@ -264,13 +271,35 @@ class TestEvalRunner(unittest.TestCase):
             payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
 
             self.assertFalse(result.passed)
-            self.assertEqual(result.status, "infrastructure_error")
+            self.assertEqual(result.status, "agent_error")
+            self.assertEqual(result.failure_category, "agent")
             self.assertEqual(payload["execution"]["error_type"], "RuntimeError")
             self.assertIn("candidate crashed", payload["execution"]["error_message"])
             self.assertEqual(payload["failure"]["stage"], "candidate_execution")
             self.assertIsNone(payload["grade_report"])
             self.assertTrue((result.artifact_path.parent / "transcript.jsonl").is_file())
             self.assertTrue((result.artifact_path.parent / "artifacts.json").is_file())
+
+    def test_grader_exception_is_classified_separately(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = EvalRunner(
+                artifact_store=EvalArtifactStore(Path(tmpdir) / "artifacts"),
+                grader_registry=FailingGraderRegistry(),
+                work_root=Path(tmpdir),
+            )
+
+            result = runner.run(
+                self.case,
+                manifest_dir=self.eval_root / "cases",
+                executor=FixingExecutor(),
+                trial_id="grader-error-trial",
+            )
+            payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(result.status, "grader_error")
+            self.assertEqual(result.failure_category, "grader")
+            self.assertEqual(payload["failure"]["stage"], "grading")
+            self.assertEqual(payload["failure_category"], "grader")
 
     def test_agent_executor_persists_transcript_trajectory_and_raw_traces(self):
         with tempfile.TemporaryDirectory() as tmpdir:
