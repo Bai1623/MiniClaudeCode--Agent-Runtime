@@ -14,6 +14,8 @@ from miniclaudecode.harness.evaluator import (
     EvaluationCheck,
     EvaluationReport,
     Evaluator,
+    GraderContext,
+    GraderRegistry,
 )
 from miniclaudecode.harness.planner import TaskSpec
 
@@ -26,6 +28,17 @@ class FakeRunner:
     def __call__(self, command: list[str], cwd: Path) -> CommandResult:
         self.calls.append((command, cwd))
         return self.results[tuple(command)]
+
+
+class TaskIdentityGrader:
+    name = "task_identity"
+
+    def grade(self, context: GraderContext) -> EvaluationCheck:
+        return EvaluationCheck(
+            name=self.name,
+            status="passed" if context.task.id else "failed",
+            metadata={"task_id": context.task.id},
+        )
 
 
 class TestEvaluationModels(unittest.TestCase):
@@ -106,29 +119,29 @@ class TestEvaluator(unittest.TestCase):
         self.assertEqual(check.metadata["returncode"], 1)
         self.assertIn("tests failed", check.message)
 
-    def test_check_task_mentions_tests(self):
-        evaluator = Evaluator(runner=self.make_runner())
-        task = TaskSpec(
-            id="task-001",
-            title="Add evaluator",
-            acceptance=["新增 tests/test_harness_evaluator.py"],
+    def test_registry_supports_custom_configured_grader(self):
+        registry = GraderRegistry()
+        registry.register(TaskIdentityGrader())
+        evaluator = Evaluator(
+            runner=self.make_runner(),
+            registry=registry,
+            enabled_graders=["task_identity"],
         )
+        task = TaskSpec(id="task-001", title="Add evaluator")
 
-        check = evaluator.check_task_mentions_tests(task)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            report = evaluator.evaluate_task(store, store.create_run(), task)
 
-        self.assertEqual(check.status, "passed")
+        self.assertEqual(report.status, "passed")
+        self.assertEqual([check.name for check in report.checks], ["task_identity"])
+        self.assertEqual(report.checks[0].metadata["task_id"], "task-001")
 
-    def test_check_task_missing_tests_fails(self):
-        evaluator = Evaluator(runner=self.make_runner())
-        task = TaskSpec(
-            id="task-001",
-            title="Add evaluator",
-            acceptance=["write deterministic checks"],
-        )
-
-        check = evaluator.check_task_mentions_tests(task)
-
-        self.assertEqual(check.status, "failed")
+    def test_unknown_or_empty_grader_configuration_fails_fast(self):
+        with self.assertRaisesRegex(ValueError, "Unknown harness grader"):
+            Evaluator(runner=self.make_runner(), enabled_graders=["missing"])
+        with self.assertRaisesRegex(ValueError, "At least one harness grader"):
+            Evaluator(runner=self.make_runner(), enabled_graders=[])
 
     def test_evaluate_task_writes_report(self):
         runner = self.make_runner()
@@ -149,7 +162,11 @@ class TestEvaluator(unittest.TestCase):
         self.assertEqual(report.status, "passed")
         self.assertEqual(saved["task_id"], "task-001")
         self.assertEqual(saved["status"], "passed")
-        self.assertEqual(len(saved["checks"]), 4)
+        self.assertEqual(len(saved["checks"]), 3)
+        self.assertEqual(
+            [check["name"] for check in saved["checks"]],
+            ["unit_tests", "py_compile", "git_diff_stat"],
+        )
 
     def test_evaluate_task_fails_when_any_check_fails(self):
         runner = self.make_runner(compile_code=1)

@@ -264,6 +264,8 @@ python -m miniclaudecode --resume <run_id>
 python -m miniclaudecode --run-harness --harness-task "实现核心逻辑" --harness-task "补充测试" "实现一个新功能"
 ```
 
+Harness evaluator 通过可配置的 grader registry 执行确定性验收。默认启用 `unit_tests`、`py_compile` 和 `git_diff_stat`；可以在配置文件的 `harness.graders` 或环境变量 `MINICLAUDECODE_HARNESS_GRADERS` 中选择启用项。任务是否通过只取决于实际 grader 结果，不再根据标题或验收描述中是否出现“test/测试”关键词判断。
+
 ### Git Workflow
 
 输出 Git 工程报告：
@@ -456,7 +458,8 @@ d / deny    拒绝执行
   },
   "harness": {
     "runs_dir": ".miniclaudecode/runs",
-    "max_repair_rounds": 1
+    "max_repair_rounds": 1,
+    "graders": ["unit_tests", "py_compile", "git_diff_stat"]
   }
 }
 ```
@@ -475,6 +478,7 @@ d / deny    拒绝执行
 | MINICLAUDECODE_DISABLED_TOOLS | tool_runtime.disabled_tools，逗号分隔 |
 | MINICLAUDECODE_HARNESS_RUNS_DIR | harness.runs_dir |
 | MINICLAUDECODE_MAX_REPAIR_ROUNDS | harness.max_repair_rounds |
+| MINICLAUDECODE_HARNESS_GRADERS | harness.graders，逗号分隔 |
 
 ## 目录结构
 

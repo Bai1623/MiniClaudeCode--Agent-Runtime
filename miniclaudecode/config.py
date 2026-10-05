@@ -57,6 +57,9 @@ class SafetyConfig:
 class HarnessConfig:
     runs_dir: str = ".miniclaudecode/runs"
     max_repair_rounds: int = 1
+    graders: list[str] = field(
+        default_factory=lambda: ["unit_tests", "py_compile", "git_diff_stat"]
+    )
 
 
 @dataclass(init=False)
@@ -88,6 +91,7 @@ class Config:
         denied_patterns: list[str] | None = None,
         harness_runs_dir: str | None = None,
         max_repair_rounds: int | None = None,
+        harness_graders: list[str] | None = None,
     ) -> None:
         if isinstance(model, ModelConfig):
             self.model = model
@@ -128,6 +132,8 @@ class Config:
             self.harness.runs_dir = harness_runs_dir
         if max_repair_rounds is not None:
             self.harness.max_repair_rounds = max_repair_rounds
+        if harness_graders is not None:
+            self.harness.graders = list(harness_graders)
 
     @property
     def max_turns(self) -> int:
@@ -301,6 +307,8 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         values["tool_runtime.enabled_tools"] = _split_csv(env["MINICLAUDECODE_ENABLED_TOOLS"])
     if "MINICLAUDECODE_DISABLED_TOOLS" in env:
         values["tool_runtime.disabled_tools"] = _split_csv(env["MINICLAUDECODE_DISABLED_TOOLS"])
+    if "MINICLAUDECODE_HARNESS_GRADERS" in env:
+        values["harness.graders"] = _split_csv(env["MINICLAUDECODE_HARNESS_GRADERS"])
     _apply_mapping(config, values)
 
 
@@ -356,6 +364,8 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.harness.runs_dir = str(value)
     elif key in {"max_repair_rounds", "harness.max_repair_rounds"}:
         config.harness.max_repair_rounds = _parse_int(key, value)
+    elif key in {"harness_graders", "harness.graders"}:
+        config.harness.graders = _parse_string_list(key, value)
 
 
 def _parse_permission_mode(value: PermissionMode | str) -> PermissionMode:

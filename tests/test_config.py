@@ -29,6 +29,10 @@ class TestConfigDefaults(unittest.TestCase):
         self.assertEqual(config.model.model, "claude-sonnet-4-20250514")
         self.assertEqual(config.safety.workspace_root, ".")
         self.assertEqual(config.safety.permission_mode, PermissionMode.ASK)
+        self.assertEqual(
+            config.harness.graders,
+            ["unit_tests", "py_compile", "git_diff_stat"],
+        )
 
     def test_legacy_constructor_arguments_still_work(self):
         config = Config(
@@ -41,6 +45,7 @@ class TestConfigDefaults(unittest.TestCase):
             workspace_root="workspace",
             harness_runs_dir="runs",
             max_repair_rounds=3,
+            harness_graders=["unit_tests"],
         )
 
         self.assertEqual(config.model.model, "test-model")
@@ -53,6 +58,7 @@ class TestConfigDefaults(unittest.TestCase):
         self.assertEqual(config.safety.workspace_root, "workspace")
         self.assertEqual(config.harness.runs_dir, "runs")
         self.assertEqual(config.harness.max_repair_rounds, 3)
+        self.assertEqual(config.harness.graders, ["unit_tests"])
 
     def test_legacy_properties_update_sections(self):
         config = Config()
@@ -90,6 +96,7 @@ class TestLoadConfig(unittest.TestCase):
                     "harness": {
                         "runs_dir": "file-runs",
                         "max_repair_rounds": 2,
+                        "graders": ["unit_tests", "git_diff_stat"],
                     },
                 }),
                 encoding="utf-8",
@@ -106,6 +113,7 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.safety.allowed_commands, ["git status"])
         self.assertEqual(config.harness.runs_dir, "file-runs")
         self.assertEqual(config.harness.max_repair_rounds, 2)
+        self.assertEqual(config.harness.graders, ["unit_tests", "git_diff_stat"])
 
     def test_precedence_defaults_file_env_cli(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -125,6 +133,7 @@ class TestLoadConfig(unittest.TestCase):
                     "MINICLAUDECODE_PERMISSION_MODE": "ask",
                     "MINICLAUDECODE_WORKSPACE_ROOT": "env-root",
                     "MINICLAUDECODE_MAX_REPAIR_ROUNDS": "4",
+                    "MINICLAUDECODE_HARNESS_GRADERS": "unit_tests,py_compile",
                 },
                 cli_overrides={
                     "model.model": "cli-model",
@@ -138,6 +147,7 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.safety.workspace_root, "cli-root")
         self.assertEqual(config.safety.permission_mode, PermissionMode.ASK)
         self.assertEqual(config.harness.max_repair_rounds, 4)
+        self.assertEqual(config.harness.graders, ["unit_tests", "py_compile"])
 
     def test_loads_toml_config_and_optional_model_pricing(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -580,7 +580,7 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
         store=store,
         planner=Planner(),
         executor=Executor(agent),
-        evaluator=Evaluator(),
+        evaluator=Evaluator(enabled_graders=config.harness.graders),
         max_repair_rounds=config.harness.max_repair_rounds,
         memory_store=MemoryStore(),
     )
