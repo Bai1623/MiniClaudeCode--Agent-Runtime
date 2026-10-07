@@ -15,7 +15,19 @@ class TaskSpec:
     id: str
     title: str
     acceptance: list[str] = field(default_factory=list)
+    test_commands: list[list[str]] = field(default_factory=list)
     notes: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.id.strip():
+            raise ValueError("Task id must not be empty.")
+        if not self.title.strip():
+            raise ValueError("Task title must not be empty.")
+        if any(not isinstance(item, str) or not item.strip() for item in self.acceptance):
+            raise ValueError("Task acceptance criteria must not contain empty values.")
+        for command in self.test_commands:
+            if not command or any(not isinstance(part, str) or not part for part in command):
+                raise ValueError("Task test commands must be non-empty lists of strings.")
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -25,6 +37,8 @@ class TaskSpec:
         }
         if self.notes:
             data["notes"] = self.notes
+        if self.test_commands:
+            data["test_commands"] = [list(command) for command in self.test_commands]
         return data
 
 
@@ -74,6 +88,11 @@ class Planner:
         else:
             lines.append("No acceptance criteria provided.")
 
+        if task.test_commands:
+            lines.extend(["", "## Test Commands", ""])
+            for command in task.test_commands:
+                lines.append(f"- `{' '.join(command)}`")
+
         if task.notes:
             lines.extend([
                 "",
@@ -104,10 +123,23 @@ class Planner:
         task_id = str(task.get("id") or f"task-{index:03d}")
         title = str(task["title"])
         acceptance = [str(item) for item in task.get("acceptance", [])]
+        test_commands = _coerce_test_commands(task.get("test_commands", []))
         notes = str(task.get("notes", ""))
         return TaskSpec(
             id=task_id,
             title=title,
             acceptance=acceptance,
+            test_commands=test_commands,
             notes=notes,
         )
+
+
+def _coerce_test_commands(value: Any) -> list[list[str]]:
+    if not isinstance(value, list):
+        raise ValueError("Task test_commands must be a list of command argument lists.")
+    commands: list[list[str]] = []
+    for command in value:
+        if not isinstance(command, list):
+            raise ValueError("Each task test command must be a list of strings.")
+        commands.append(list(command))
+    return commands

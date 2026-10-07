@@ -26,6 +26,7 @@ class TestFinalReportGenerator(unittest.TestCase):
             id="task-001",
             title="Add evaluator",
             acceptance=["run tests"],
+            test_commands=[["{python}", "-m", "unittest", "tests.test_harness_report"]],
         )
         plan = Planner().build_plan("Build harness", [task])
         task_result = TaskRunResult(
@@ -68,6 +69,8 @@ class TestFinalReportGenerator(unittest.TestCase):
         self.assertIn("Goal: Build harness", report)
         self.assertIn("task-001: Add evaluator", report)
         self.assertIn("unit_tests: passed - tests ok", report)
+        self.assertIn("Task-specific tests:", report)
+        self.assertIn("{python} -m unittest tests.test_harness_report", report)
 
     def test_write_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:

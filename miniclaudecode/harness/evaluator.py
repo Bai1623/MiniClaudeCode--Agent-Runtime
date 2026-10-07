@@ -41,11 +41,16 @@ class EvaluationReport:
     task_id: str
     status: str
     checks: list[EvaluationCheck]
+    acceptance_criteria: list[str] = field(default_factory=list)
+    test_commands: list[list[str]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": 2,
             "task_id": self.task_id,
             "status": self.status,
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "test_commands": [list(command) for command in self.test_commands],
             "checks": [check.to_dict() for check in self.checks],
         }
 
@@ -178,8 +183,15 @@ class Evaluator:
     ) -> EvaluationReport:
         context = GraderContext(task=task, project_dir=self.project_dir, runner=self.runner)
         checks = [self.registry.grade(name, context) for name in self.enabled_graders]
+        checks.extend(self._run_task_test_commands(task, context))
         status = "passed" if all(check.status == "passed" for check in checks) else "failed"
-        report = EvaluationReport(task_id=task.id, status=status, checks=checks)
+        report = EvaluationReport(
+            task_id=task.id,
+            status=status,
+            checks=checks,
+            acceptance_criteria=list(task.acceptance),
+            test_commands=[list(command) for command in task.test_commands],
+        )
         store.write_evaluator_report(artifacts, task.id, report.to_dict())
         return report
 
@@ -199,6 +211,32 @@ class Evaluator:
             runner=self.runner,
         )
         return self.registry.grade(name, context)
+
+    @staticmethod
+    def _run_task_test_commands(
+        task: TaskSpec,
+        context: GraderContext,
+    ) -> list[EvaluationCheck]:
+        checks = []
+        for index, command in enumerate(task.test_commands, start=1):
+            grader = CommandGrader(
+                name=f"task_test_{index:03d}",
+                command=tuple(command),
+            )
+            check = grader.grade(context)
+            checks.append(
+                EvaluationCheck(
+                    name=check.name,
+                    status=check.status,
+                    message=check.message,
+                    metadata={
+                        **check.metadata,
+                        "scope": "task",
+                        "acceptance_criteria": list(task.acceptance),
+                    },
+                )
+            )
+        return checks
 
     @staticmethod
     def _default_runner(command: list[str], cwd: Path) -> CommandResult:

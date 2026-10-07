@@ -51,6 +51,11 @@ class FinalReportGenerator:
             else:
                 lines.append("No acceptance criteria provided.")
 
+            if task_result.task.test_commands:
+                lines.extend(["", "Task-specific tests:", ""])
+                for command in task_result.task.test_commands:
+                    lines.append(f"- `{' '.join(command)}`")
+
             lines.extend(["", "Checks:", ""])
             latest = task_result.evaluations[-1] if task_result.evaluations else None
             if latest is None or not latest.checks:

@@ -78,6 +78,11 @@ class Executor:
                 task.notes,
             ])
 
+        if task.test_commands:
+            lines.extend(["", "Task-Specific Test Commands:"])
+            for command in task.test_commands:
+                lines.append(f"- {' '.join(command)}")
+
         if feedback:
             lines.extend([
                 "",

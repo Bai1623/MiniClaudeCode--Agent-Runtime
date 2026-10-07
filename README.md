@@ -266,6 +266,21 @@ python -m miniclaudecode --run-harness --harness-task "实现核心逻辑" --har
 
 Harness evaluator 通过可配置的 grader registry 执行确定性验收。默认启用 `unit_tests`、`py_compile` 和 `git_diff_stat`；可以在配置文件的 `harness.graders` 或环境变量 `MINICLAUDECODE_HARNESS_GRADERS` 中选择启用项。任务是否通过只取决于实际 grader 结果，不再根据标题或验收描述中是否出现“test/测试”关键词判断。
 
+每个 `TaskSpec` 除文字验收标准外，还可以声明独立的 `test_commands`。命令使用参数数组表示，支持 `{python}` 占位符；执行时不经过 shell。任务计划、任务 Markdown、Agent prompt、evaluator report 和恢复状态都会保留这份契约：
+
+```python
+task = TaskSpec(
+    id="task-001",
+    title="修复配置优先级",
+    acceptance=["环境变量覆盖配置文件", "默认行为保持不变"],
+    test_commands=[
+        ["{python}", "-m", "unittest", "tests.test_config.TestLoadConfig"],
+    ],
+)
+```
+
+全局 grader 负责仓库级基础质量门禁，任务专属命令负责验证当前任务的精确验收范围；任一检查失败都会进入 repair feedback。没有声明 `test_commands` 的旧任务保持兼容。
+
 ### Git Workflow
 
 输出 Git 工程报告：

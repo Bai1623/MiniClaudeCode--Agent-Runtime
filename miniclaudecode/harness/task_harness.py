@@ -242,7 +242,20 @@ class TaskHarness:
             results.append(TaskRunResult(
                 task=task,
                 executions=[],
-                evaluations=[EvaluationReport(task_id=task_id, status=str(raw["status"]), checks=checks)],
+                evaluations=[
+                    EvaluationReport(
+                        task_id=task_id,
+                        status=str(raw["status"]),
+                        checks=checks,
+                        acceptance_criteria=[
+                            str(item) for item in raw.get("acceptance_criteria", task.acceptance)
+                        ],
+                        test_commands=[
+                            [str(part) for part in command]
+                            for command in raw.get("test_commands", task.test_commands)
+                        ],
+                    )
+                ],
             ))
         return results
 

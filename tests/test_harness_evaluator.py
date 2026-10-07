@@ -65,8 +65,11 @@ class TestEvaluationModels(unittest.TestCase):
         )
 
         self.assertEqual(report.to_dict(), {
+            "schema_version": 2,
             "task_id": "task-001",
             "status": "passed",
+            "acceptance_criteria": [],
+            "test_commands": [],
             "checks": [
                 {
                     "name": "unit_tests",
@@ -162,6 +165,9 @@ class TestEvaluator(unittest.TestCase):
         self.assertEqual(report.status, "passed")
         self.assertEqual(saved["task_id"], "task-001")
         self.assertEqual(saved["status"], "passed")
+        self.assertEqual(saved["schema_version"], 2)
+        self.assertEqual(saved["acceptance_criteria"], ["add tests"])
+        self.assertEqual(saved["test_commands"], [])
         self.assertEqual(len(saved["checks"]), 3)
         self.assertEqual(
             [check["name"] for check in saved["checks"]],
@@ -183,6 +189,37 @@ class TestEvaluator(unittest.TestCase):
             report = evaluator.evaluate_task(store, artifacts, task)
 
         self.assertEqual(report.status, "failed")
+
+    def test_evaluate_task_runs_task_specific_test_commands(self):
+        runner = self.make_runner()
+        task_command = (sys.executable, "-m", "unittest", "tests.test_harness_evaluator")
+        runner.results[task_command] = CommandResult(
+            command=list(task_command),
+            returncode=0,
+            stdout="task tests ok",
+        )
+        evaluator = Evaluator(runner=runner, project_dir=".")
+        task = TaskSpec(
+            id="task-001",
+            title="Add evaluator",
+            acceptance=["Evaluator regression passes."],
+            test_commands=[["{python}", "-m", "unittest", "tests.test_harness_evaluator"]],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            report = evaluator.evaluate_task(store, store.create_run(), task)
+
+        task_check = report.checks[-1]
+        self.assertEqual(task_check.name, "task_test_001")
+        self.assertEqual(task_check.status, "passed")
+        self.assertEqual(task_check.metadata["scope"], "task")
+        self.assertEqual(
+            task_check.metadata["acceptance_criteria"],
+            ["Evaluator regression passes."],
+        )
+        self.assertIn((list(task_command), Path(".")), runner.calls)
+        self.assertEqual(report.test_commands, [list(task.test_commands[0])])
 
 
 if __name__ == "__main__":

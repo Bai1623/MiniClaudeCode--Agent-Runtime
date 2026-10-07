@@ -33,6 +33,24 @@ class TestTaskSpec(unittest.TestCase):
 
         self.assertEqual(task.to_dict()["notes"], "Keep it deterministic.")
 
+    def test_to_dict_includes_structured_test_commands(self):
+        task = TaskSpec(
+            id="task-001",
+            title="Add planner",
+            test_commands=[["{python}", "-m", "unittest", "tests.test_harness_planner"]],
+        )
+
+        self.assertEqual(
+            task.to_dict()["test_commands"],
+            [["{python}", "-m", "unittest", "tests.test_harness_planner"]],
+        )
+
+    def test_rejects_string_or_empty_test_commands(self):
+        with self.assertRaisesRegex(ValueError, "non-empty lists"):
+            TaskSpec(id="task-001", title="Task", test_commands=[[]])
+        with self.assertRaisesRegex(ValueError, "list of command argument lists"):
+            Planner().build_plan("goal", [{"title": "Task", "test_commands": "pytest"}])
+
 
 class TestPlan(unittest.TestCase):
     def test_to_dict(self):
@@ -92,6 +110,7 @@ class TestPlanner(unittest.TestCase):
             title="Add planner",
             acceptance=["writes plan.json", "writes task markdown"],
             notes="Use ArtifactStore.",
+            test_commands=[["{python}", "-m", "unittest", "tests.test_harness_planner"]],
         )
 
         markdown = self.planner.render_task_markdown(task)
@@ -102,6 +121,8 @@ class TestPlanner(unittest.TestCase):
         self.assertIn("1. writes plan.json", markdown)
         self.assertIn("2. writes task markdown", markdown)
         self.assertIn("## Notes", markdown)
+        self.assertIn("## Test Commands", markdown)
+        self.assertIn("{python} -m unittest tests.test_harness_planner", markdown)
         self.assertTrue(markdown.endswith("\n"))
 
     def test_write_plan_artifacts(self):

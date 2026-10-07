@@ -207,7 +207,14 @@ class TestTaskHarness(unittest.TestCase):
                 interrupted.run(
                     request="build two tasks",
                     goal="Build two tasks",
-                    tasks=[{"title": "First test"}, {"title": "Second test"}],
+                    tasks=[
+                        {"title": "First test"},
+                        {
+                            "title": "Second test",
+                            "acceptance": ["targeted check passes"],
+                            "test_commands": [["{python}", "-m", "unittest", "tests.test_config"]],
+                        },
+                    ],
                 )
 
             artifacts = store.list_runs()[0]
@@ -229,6 +236,10 @@ class TestTaskHarness(unittest.TestCase):
 
             self.assertEqual(resumed.status, "passed")
             self.assertEqual([result.task.id for result in resumed.task_results], ["task-001", "task-002"])
+            self.assertEqual(
+                resumed.plan.tasks[1].test_commands,
+                [["{python}", "-m", "unittest", "tests.test_config"]],
+            )
             self.assertIn({"type": "run_resumed", "run_id": artifacts.run_id, "next_task_index": 1}, events)
             self.assertEqual(store.read_state(artifacts)["status"], "succeeded")
 
