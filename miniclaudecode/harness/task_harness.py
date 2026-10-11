@@ -104,16 +104,26 @@ class TaskHarness:
 
         task_results = list(prior_results)
         completed_ids = [result.task.id for result in task_results]
+        results_by_id = {result.task.id: result for result in task_results}
         for index, task in enumerate(plan.tasks[start_index:], start=start_index):
-            self._transition(
-                artifacts,
-                "executing",
-                next_task_index=index,
-                completed_task_ids=completed_ids,
-                task_id=task.id,
-            )
-            task_result = self._run_task(artifacts, task)
+            blocked_by = [
+                dependency
+                for dependency in task.depends_on
+                if results_by_id[dependency].status != "passed"
+            ]
+            if blocked_by:
+                task_result = self._block_task(artifacts, task, blocked_by)
+            else:
+                self._transition(
+                    artifacts,
+                    "executing",
+                    next_task_index=index,
+                    completed_task_ids=completed_ids,
+                    task_id=task.id,
+                )
+                task_result = self._run_task(artifacts, task)
             task_results.append(task_result)
+            results_by_id[task.id] = task_result
             completed_ids.append(task.id)
             self._transition(
                 artifacts,
@@ -162,6 +172,38 @@ class TaskHarness:
             self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "failed"})
 
         return TaskRunResult(task=task, executions=executions, evaluations=evaluations)
+
+    def _block_task(
+        self,
+        artifacts: RunArtifacts,
+        task: TaskSpec,
+        blocked_by: list[str],
+    ) -> TaskRunResult:
+        message = f"Blocked by unsuccessful dependencies: {', '.join(blocked_by)}."
+        report = EvaluationReport(
+            task_id=task.id,
+            status="blocked",
+            checks=[
+                EvaluationCheck(
+                    name="dependencies",
+                    status="blocked",
+                    message=message,
+                    metadata={"blocked_by": list(blocked_by)},
+                )
+            ],
+            acceptance_criteria=list(task.acceptance),
+            test_commands=[list(command) for command in task.test_commands],
+        )
+        self.store.write_evaluator_report(artifacts, task.id, report.to_dict())
+        self.store.append_event(
+            artifacts,
+            {
+                "type": "task_blocked",
+                "task_id": task.id,
+                "blocked_by": list(blocked_by),
+            },
+        )
+        return TaskRunResult(task=task, executions=[], evaluations=[report])
 
     def _transition(
         self,

@@ -19,12 +19,14 @@ class FakeExecutor:
     def __init__(self) -> None:
         self.feedbacks: list[str] = []
         self.trace_dirs: list[str] = []
+        self.task_ids: list[str] = []
 
     def set_trace_dir(self, trace_dir):
         self.trace_dirs.append(trace_dir)
 
     def execute_task(self, store, artifacts, task, feedback=""):
         self.feedbacks.append(feedback)
+        self.task_ids.append(task.id)
         store.append_event(artifacts, {"type": "task_started", "task_id": task.id})
         result = ExecutionResult(task_id=task.id, prompt="prompt", response="done")
         store.append_event(artifacts, result.to_event())
@@ -159,6 +161,49 @@ class TestTaskHarness(unittest.TestCase):
         self.assertEqual(result.status, "failed")
         self.assertEqual(len(result.task_results[0].evaluations), 2)
 
+    def test_failed_dependency_blocks_downstream_tasks_but_not_independent_work(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            executor = FakeExecutor()
+            evaluator = FakeEvaluator(["failed", "passed"])
+            harness = TaskHarness(
+                store=store,
+                planner=Planner(),
+                executor=executor,
+                evaluator=evaluator,
+                max_repair_rounds=0,
+            )
+            result = harness.run(
+                request="build dependency graph",
+                goal="Build dependency graph",
+                tasks=[
+                    {"id": "core", "title": "Build core"},
+                    {"id": "api", "title": "Build API", "depends_on": ["core"]},
+                    {"id": "ui", "title": "Build UI", "depends_on": ["api"]},
+                    {"id": "docs", "title": "Write docs"},
+                ],
+            )
+            events = [
+                json.loads(line)
+                for line in result.artifacts.events_path.read_text(encoding="utf-8").splitlines()
+            ]
+            blocked_report = json.loads(
+                (result.artifacts.evaluator_reports_dir / "api.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(
+            [task_result.status for task_result in result.task_results],
+            ["failed", "blocked", "blocked", "passed"],
+        )
+        self.assertEqual(executor.task_ids, ["core", "docs"])
+        self.assertEqual(evaluator.calls, 2)
+        self.assertEqual(blocked_report["checks"][0]["metadata"]["blocked_by"], ["core"])
+        self.assertIn(
+            {"type": "task_blocked", "task_id": "api", "blocked_by": ["core"]},
+            events,
+        )
+
     def test_run_writes_task_memory_when_store_is_enabled(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             artifact_store = ArtifactStore(base_dir=Path(tmpdir) / "runs")
@@ -242,6 +287,50 @@ class TestTaskHarness(unittest.TestCase):
             )
             self.assertIn({"type": "run_resumed", "run_id": artifacts.run_id, "next_task_index": 1}, events)
             self.assertEqual(store.read_state(artifacts)["status"], "succeeded")
+
+    def test_resume_restores_blocked_dependency_results(self):
+        class InterruptingIndependentExecutor(FakeExecutor):
+            def execute_task(self, store, artifacts, task, feedback=""):
+                if task.id == "docs":
+                    raise RuntimeError("simulated interruption after blocked task")
+                return super().execute_task(store, artifacts, task, feedback)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            interrupted = TaskHarness(
+                store=store,
+                planner=Planner(),
+                executor=InterruptingIndependentExecutor(),
+                evaluator=FakeEvaluator(["failed"]),
+                max_repair_rounds=0,
+            )
+            with self.assertRaisesRegex(RuntimeError, "after blocked task"):
+                interrupted.run(
+                    request="build dependency graph",
+                    goal="Build dependency graph",
+                    tasks=[
+                        {"id": "core", "title": "Build core"},
+                        {"id": "api", "title": "Build API", "depends_on": ["core"]},
+                        {"id": "docs", "title": "Write docs"},
+                    ],
+                )
+
+            artifacts = store.list_runs()[0]
+            self.assertEqual(store.read_state(artifacts)["completed_task_ids"], ["core", "api"])
+            resumed_executor = FakeExecutor()
+            resumed = TaskHarness(
+                store=store,
+                planner=Planner(),
+                executor=resumed_executor,
+                evaluator=FakeEvaluator(["passed"]),
+                max_repair_rounds=0,
+            ).resume(artifacts.run_id)
+
+        self.assertEqual(
+            [task_result.status for task_result in resumed.task_results],
+            ["failed", "blocked", "passed"],
+        )
+        self.assertEqual(resumed_executor.task_ids, ["docs"])
 
 
 if __name__ == "__main__":

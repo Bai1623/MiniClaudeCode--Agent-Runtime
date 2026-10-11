@@ -45,6 +45,7 @@ class TestExecutor(unittest.TestCase):
             acceptance=["run unit tests", "write report"],
             notes="Keep deterministic.",
             test_commands=[["{python}", "-m", "unittest", "tests.test_harness_executor"]],
+            depends_on=["task-000"],
         )
 
         prompt = executor.build_task_prompt(task, feedback="compile failed")
@@ -57,6 +58,8 @@ class TestExecutor(unittest.TestCase):
         self.assertIn("compile failed", prompt)
         self.assertIn("Task-Specific Test Commands:", prompt)
         self.assertIn("{python} -m unittest tests.test_harness_executor", prompt)
+        self.assertIn("Satisfied Task Dependencies:", prompt)
+        self.assertIn("task-000", prompt)
 
     def test_execute_task_calls_runner_and_records_events(self):
         runner = FakeRunner(response="task complete")

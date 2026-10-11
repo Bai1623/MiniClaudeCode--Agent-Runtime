@@ -273,6 +273,7 @@ task = TaskSpec(
     id="task-001",
     title="修复配置优先级",
     acceptance=["环境变量覆盖配置文件", "默认行为保持不变"],
+    depends_on=["task-000"],
     test_commands=[
         ["{python}", "-m", "unittest", "tests.test_config.TestLoadConfig"],
     ],
@@ -280,6 +281,8 @@ task = TaskSpec(
 ```
 
 全局 grader 负责仓库级基础质量门禁，任务专属命令负责验证当前任务的精确验收范围；任一检查失败都会进入 repair feedback。没有声明 `test_commands` 的旧任务保持兼容。
+
+`depends_on` 用任务 ID 声明依赖关系。Planner 会拒绝重复 ID、未知依赖、自依赖和依赖环，并用稳定拓扑排序生成执行顺序。运行时只有全部前置任务通过才会调用 Agent；失败或已阻塞的前置任务会让下游任务进入可审计的 `blocked` 状态，同时不影响无依赖的其他任务继续执行。阻塞报告和事件会持久化，因此中断恢复时不会误执行下游任务。
 
 ### Git Workflow
 

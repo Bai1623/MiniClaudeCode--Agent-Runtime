@@ -104,6 +104,44 @@ class TestPlanner(unittest.TestCase):
 
         self.assertEqual(plan.tasks[0].id, "custom-task")
 
+    def test_build_plan_stably_topologically_orders_dependencies(self):
+        plan = self.planner.build_plan(
+            goal="Build feature",
+            tasks=[
+                {"id": "integration", "title": "Integrate", "depends_on": ["core"]},
+                {"id": "core", "title": "Build core"},
+                {"id": "docs", "title": "Write docs"},
+            ],
+        )
+
+        self.assertEqual([task.id for task in plan.tasks], ["core", "integration", "docs"])
+        self.assertEqual(plan.tasks[1].depends_on, ["core"])
+
+    def test_build_plan_rejects_invalid_dependency_graphs(self):
+        with self.assertRaisesRegex(ValueError, "unknown task"):
+            self.planner.build_plan(
+                "goal",
+                [{"id": "app", "title": "App", "depends_on": ["missing"]}],
+            )
+        with self.assertRaisesRegex(ValueError, "dependency cycle"):
+            self.planner.build_plan(
+                "goal",
+                [
+                    {"id": "first", "title": "First", "depends_on": ["second"]},
+                    {"id": "second", "title": "Second", "depends_on": ["first"]},
+                ],
+            )
+        with self.assertRaisesRegex(ValueError, "Duplicate harness task id"):
+            self.planner.build_plan(
+                "goal",
+                [{"id": "same", "title": "First"}, {"id": "same", "title": "Second"}],
+            )
+        with self.assertRaisesRegex(ValueError, "depends_on must be a list"):
+            self.planner.build_plan(
+                "goal",
+                [{"id": "app", "title": "App", "depends_on": "core"}],
+            )
+
     def test_render_task_markdown(self):
         task = TaskSpec(
             id="task-001",
@@ -111,6 +149,7 @@ class TestPlanner(unittest.TestCase):
             acceptance=["writes plan.json", "writes task markdown"],
             notes="Use ArtifactStore.",
             test_commands=[["{python}", "-m", "unittest", "tests.test_harness_planner"]],
+            depends_on=["task-000"],
         )
 
         markdown = self.planner.render_task_markdown(task)
@@ -123,6 +162,8 @@ class TestPlanner(unittest.TestCase):
         self.assertIn("## Notes", markdown)
         self.assertIn("## Test Commands", markdown)
         self.assertIn("{python} -m unittest tests.test_harness_planner", markdown)
+        self.assertIn("## Dependencies", markdown)
+        self.assertIn("`task-000`", markdown)
         self.assertTrue(markdown.endswith("\n"))
 
     def test_write_plan_artifacts(self):

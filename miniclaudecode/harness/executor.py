@@ -83,6 +83,11 @@ class Executor:
             for command in task.test_commands:
                 lines.append(f"- {' '.join(command)}")
 
+        if task.depends_on:
+            lines.extend(["", "Satisfied Task Dependencies:"])
+            for task_id in task.depends_on:
+                lines.append(f"- {task_id}")
+
         if feedback:
             lines.extend([
                 "",

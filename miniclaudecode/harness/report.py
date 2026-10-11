@@ -41,10 +41,10 @@ class FinalReportGenerator:
                 f"Status: {task_result.status}",
                 f"Executions: {len(task_result.executions)}",
                 f"Evaluations: {len(task_result.evaluations)}",
-                "",
-                "Acceptance:",
-                "",
             ])
+            if task_result.task.depends_on:
+                lines.append(f"Dependencies: {', '.join(task_result.task.depends_on)}")
+            lines.extend(["", "Acceptance:", ""])
             if task_result.task.acceptance:
                 for index, item in enumerate(task_result.task.acceptance, start=1):
                     lines.append(f"{index}. {item}")
