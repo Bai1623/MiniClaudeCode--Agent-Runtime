@@ -12,6 +12,7 @@ from miniclaudecode.memory.records import TaskMemory
 from miniclaudecode.memory.store import MemoryStore
 
 from .artifacts import ArtifactStore, RunArtifacts
+from .budget import BudgetExceededError, BudgetTracker, RunBudget, load_persisted_budget
 from .evaluator import EvaluationCheck, EvaluationReport, Evaluator
 from .executor import ExecutionResult, Executor
 from .planner import Plan, Planner, TaskSpec
@@ -56,6 +57,7 @@ class TaskHarness:
         evaluator: Evaluator,
         max_repair_rounds: int = 1,
         memory_store: MemoryStore | None = None,
+        budget: RunBudget | None = None,
     ) -> None:
         self.store = store
         self.planner = planner
@@ -63,9 +65,13 @@ class TaskHarness:
         self.evaluator = evaluator
         self.max_repair_rounds = max(0, max_repair_rounds)
         self.memory_store = memory_store
+        self.budget = budget or RunBudget()
+        self._budget_tracker: BudgetTracker | None = None
 
     def run(self, request: str, goal: str, tasks: list[TaskSpec | dict], spec: str = "") -> HarnessRunResult:
         artifacts = self.store.create_run()
+        self._budget_tracker = BudgetTracker(artifacts, self.budget)
+        self._persist_budget(artifacts, "active")
         self.store.write_request(artifacts, request)
         self.store.append_event(artifacts, {"type": "run_created", "run_id": artifacts.run_id})
         plan = self.planner.build_plan(goal=goal, tasks=tasks, spec=spec)
@@ -88,6 +94,9 @@ class TaskHarness:
             raise ValueError(f"Invalid next_task_index in {artifacts.state_path}")
         completed_ids = [str(task_id) for task_id in state.get("completed_task_ids", [])]
         prior_results = self._load_completed_results(artifacts, plan, completed_ids)
+        budget, elapsed = load_persisted_budget(artifacts.budget_path, self.budget)
+        self._budget_tracker = BudgetTracker(artifacts, budget, elapsed_base=elapsed)
+        self._persist_budget(artifacts, "active")
         self.store.append_event(artifacts, {"type": "run_resumed", "run_id": run_id, "next_task_index": next_task_index})
         return self._execute_plan(artifacts, plan, start_index=next_task_index, prior_results=prior_results)
 
@@ -101,6 +110,8 @@ class TaskHarness:
     ) -> HarnessRunResult:
         if hasattr(self.executor, "set_trace_dir"):
             self.executor.set_trace_dir(str(artifacts.traces_dir))
+        if hasattr(self.executor, "set_budget_guard"):
+            self.executor.set_budget_guard(self._require_budget)
 
         task_results = list(prior_results)
         completed_ids = [result.task.id for result in task_results]
@@ -114,17 +125,25 @@ class TaskHarness:
             if blocked_by:
                 task_result = self._block_task(artifacts, task, blocked_by)
             else:
-                self._transition(
-                    artifacts,
-                    "executing",
-                    next_task_index=index,
-                    completed_task_ids=completed_ids,
-                    task_id=task.id,
-                )
-                task_result = self._run_task(artifacts, task)
+                try:
+                    self._require_budget("model_call")
+                    self._transition(
+                        artifacts,
+                        "executing",
+                        next_task_index=index,
+                        completed_task_ids=completed_ids,
+                        task_id=task.id,
+                    )
+                    task_result = self._run_task(artifacts, task)
+                except BudgetExceededError as error:
+                    task_result = self._budget_exhausted_task(artifacts, task, error)
             task_results.append(task_result)
             results_by_id[task.id] = task_result
             completed_ids.append(task.id)
+            self._persist_budget(
+                artifacts,
+                "exhausted" if task_result.status == "budget_exhausted" else "active",
+            )
             self._transition(
                 artifacts,
                 "planned",
@@ -134,6 +153,12 @@ class TaskHarness:
             )
 
         status = "passed" if all(result.status == "passed" for result in task_results) else "failed"
+        self._persist_budget(
+            artifacts,
+            "completed" if status == "passed" else "exhausted" if any(
+                result.status == "budget_exhausted" for result in task_results
+            ) else "completed",
+        )
         self.store.append_event(artifacts, {"type": "run_finished", "status": status})
         memory_path = self._write_task_memory(artifacts, plan, task_results, status)
         self._transition(
@@ -155,12 +180,19 @@ class TaskHarness:
         feedback = ""
 
         for attempt in range(self.max_repair_rounds + 1):
-            if attempt > 0:
-                self.store.append_event(artifacts, {"type": "repair_started", "task_id": task.id})
-
-            executions.append(self.executor.execute_task(self.store, artifacts, task, feedback=feedback))
-            evaluation = self.evaluator.evaluate_task(self.store, artifacts, task)
-            evaluations.append(evaluation)
+            try:
+                if attempt > 0:
+                    self.store.append_event(artifacts, {"type": "repair_started", "task_id": task.id})
+                self._require_budget("model_call")
+                executions.append(self.executor.execute_task(self.store, artifacts, task, feedback=feedback))
+                self._require_budget()
+                evaluation = self.evaluator.evaluate_task(self.store, artifacts, task)
+                evaluations.append(evaluation)
+                self._require_budget()
+            except BudgetExceededError as error:
+                return self._budget_exhausted_task(
+                    artifacts, task, error, executions=executions, evaluations=evaluations
+                )
 
             if evaluation.status == "passed":
                 self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "passed"})
@@ -172,6 +204,47 @@ class TaskHarness:
             self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "failed"})
 
         return TaskRunResult(task=task, executions=executions, evaluations=evaluations)
+
+    def _require_budget(self, operation: str = "usage") -> None:
+        if self._budget_tracker is None:
+            raise RuntimeError("Harness budget tracker has not been initialized.")
+        self._budget_tracker.check(operation)
+
+    def _persist_budget(self, artifacts: RunArtifacts, status: str) -> None:
+        if self._budget_tracker is not None:
+            self.store.write_budget(artifacts, self._budget_tracker.snapshot(status=status))
+
+    def _budget_exhausted_task(
+        self,
+        artifacts: RunArtifacts,
+        task: TaskSpec,
+        error: BudgetExceededError,
+        *,
+        executions: list[ExecutionResult] | None = None,
+        evaluations: list[EvaluationReport] | None = None,
+    ) -> TaskRunResult:
+        report = EvaluationReport(
+            task_id=task.id,
+            status="budget_exhausted",
+            checks=[EvaluationCheck(
+                name="run_budget",
+                status="failed",
+                message=str(error),
+                metadata={"violations": list(error.violations), "usage": error.usage.to_dict()},
+            )],
+            acceptance_criteria=list(task.acceptance),
+            test_commands=[list(command) for command in task.test_commands],
+        )
+        self.store.write_evaluator_report(artifacts, task.id, report.to_dict())
+        self.store.append_event(artifacts, {
+            "type": "budget_exhausted", "task_id": task.id,
+            "violations": list(error.violations),
+        })
+        return TaskRunResult(
+            task=task,
+            executions=executions or [],
+            evaluations=[*(evaluations or []), report],
+        )
 
     def _block_task(
         self,

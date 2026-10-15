@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from miniclaudecode.harness.artifacts import ArtifactStore
+from miniclaudecode.harness.budget import RunBudget
 from miniclaudecode.harness.evaluator import EvaluationCheck, EvaluationReport
 from miniclaudecode.harness.executor import ExecutionResult
 from miniclaudecode.harness.planner import Planner, TaskSpec
@@ -30,6 +31,14 @@ class FakeExecutor:
         store.append_event(artifacts, {"type": "task_started", "task_id": task.id})
         result = ExecutionResult(task_id=task.id, prompt="prompt", response="done")
         store.append_event(artifacts, result.to_event())
+        return result
+
+
+class TracedExecutor(FakeExecutor):
+    def execute_task(self, store, artifacts, task, feedback=""):
+        result = super().execute_task(store, artifacts, task, feedback)
+        with artifacts.model_calls_path.open("a", encoding="utf-8") as file:
+            file.write(json.dumps({"input_tokens": 1, "output_tokens": 1}) + "\n")
         return result
 
 
@@ -85,6 +94,21 @@ class TestHarnessResults(unittest.TestCase):
 
 
 class TestTaskHarness(unittest.TestCase):
+    def test_budget_stops_later_independent_tasks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            executor = TracedExecutor()
+            result = TaskHarness(
+                store=store, planner=Planner(), executor=executor,
+                evaluator=FakeEvaluator(["passed"]), budget=RunBudget(max_api_calls=1),
+            ).run(
+                request="build", goal="build", tasks=[{"title": "first"}, {"title": "second"}],
+            )
+            budget = json.loads(result.artifacts.budget_path.read_text(encoding="utf-8"))
+
+        self.assertEqual([item.status for item in result.task_results], ["passed", "budget_exhausted"])
+        self.assertEqual(executor.task_ids, ["task-001"])
+        self.assertEqual(budget["status"], "exhausted")
     def test_run_passes_single_task(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ArtifactStore(base_dir=tmpdir)

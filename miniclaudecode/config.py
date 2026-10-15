@@ -57,6 +57,11 @@ class SafetyConfig:
 class HarnessConfig:
     runs_dir: str = ".miniclaudecode/runs"
     max_repair_rounds: int = 1
+    max_api_calls: int | None = None
+    max_tool_calls: int | None = None
+    max_total_tokens: int | None = None
+    max_duration_seconds: float | None = None
+    max_cost_usd: float | None = None
     graders: list[str] = field(
         default_factory=lambda: ["unit_tests", "py_compile", "git_diff_stat"]
     )
@@ -92,6 +97,11 @@ class Config:
         harness_runs_dir: str | None = None,
         max_repair_rounds: int | None = None,
         harness_graders: list[str] | None = None,
+        harness_max_api_calls: int | None = None,
+        harness_max_tool_calls: int | None = None,
+        harness_max_total_tokens: int | None = None,
+        harness_max_duration_seconds: float | None = None,
+        harness_max_cost_usd: float | None = None,
     ) -> None:
         if isinstance(model, ModelConfig):
             self.model = model
@@ -134,6 +144,15 @@ class Config:
             self.harness.max_repair_rounds = max_repair_rounds
         if harness_graders is not None:
             self.harness.graders = list(harness_graders)
+        for name, value in {
+            "max_api_calls": harness_max_api_calls,
+            "max_tool_calls": harness_max_tool_calls,
+            "max_total_tokens": harness_max_total_tokens,
+            "max_duration_seconds": harness_max_duration_seconds,
+            "max_cost_usd": harness_max_cost_usd,
+        }.items():
+            if value is not None:
+                setattr(self.harness, name, value)
 
     @property
     def max_turns(self) -> int:
@@ -292,6 +311,11 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         "MINICLAUDECODE_WORKSPACE_ROOT": "safety.workspace_root",
         "MINICLAUDECODE_HARNESS_RUNS_DIR": "harness.runs_dir",
         "MINICLAUDECODE_MAX_REPAIR_ROUNDS": "harness.max_repair_rounds",
+        "MINICLAUDECODE_HARNESS_MAX_API_CALLS": "harness.max_api_calls",
+        "MINICLAUDECODE_HARNESS_MAX_TOOL_CALLS": "harness.max_tool_calls",
+        "MINICLAUDECODE_HARNESS_MAX_TOTAL_TOKENS": "harness.max_total_tokens",
+        "MINICLAUDECODE_HARNESS_MAX_DURATION_SECONDS": "harness.max_duration_seconds",
+        "MINICLAUDECODE_HARNESS_MAX_COST_USD": "harness.max_cost_usd",
         "MINICLAUDECODE_INPUT_COST_PER_MILLION_USD": "model.input_cost_per_million_usd",
         "MINICLAUDECODE_OUTPUT_COST_PER_MILLION_USD": "model.output_cost_per_million_usd",
         "MINICLAUDECODE_CACHE_READ_COST_PER_MILLION_USD": "model.cache_read_cost_per_million_usd",
@@ -364,6 +388,12 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.harness.runs_dir = str(value)
     elif key in {"max_repair_rounds", "harness.max_repair_rounds"}:
         config.harness.max_repair_rounds = _parse_int(key, value)
+    elif key.startswith("harness.max_"):
+        attribute = key.removeprefix("harness.")
+        if attribute in {"max_api_calls", "max_tool_calls", "max_total_tokens"}:
+            setattr(config.harness, attribute, _parse_optional_positive_int(key, value))
+        elif attribute in {"max_duration_seconds", "max_cost_usd"}:
+            setattr(config.harness, attribute, _parse_optional_positive_float(key, value))
     elif key in {"harness_graders", "harness.graders"}:
         config.harness.graders = _parse_string_list(key, value)
 
@@ -388,6 +418,24 @@ def _parse_optional_float(key: str, value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Config value '{key}' must be a number.") from exc
+
+
+def _parse_optional_positive_int(key: str, value: Any) -> int | None:
+    if value is None:
+        return None
+    parsed = _parse_int(key, value)
+    if parsed <= 0:
+        raise ValueError(f"Config value '{key}' must be positive.")
+    return parsed
+
+
+def _parse_optional_positive_float(key: str, value: Any) -> float | None:
+    if value is None:
+        return None
+    parsed = _parse_optional_float(key, value)
+    if parsed is None or parsed <= 0:
+        raise ValueError(f"Config value '{key}' must be positive.")
+    return parsed
 
 
 def _parse_string_list(key: str, value: Any) -> list[str]:

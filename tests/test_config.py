@@ -96,6 +96,8 @@ class TestLoadConfig(unittest.TestCase):
                     "harness": {
                         "runs_dir": "file-runs",
                         "max_repair_rounds": 2,
+                        "max_api_calls": 6,
+                        "max_cost_usd": 0.25,
                         "graders": ["unit_tests", "git_diff_stat"],
                     },
                 }),
@@ -113,6 +115,8 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.safety.allowed_commands, ["git status"])
         self.assertEqual(config.harness.runs_dir, "file-runs")
         self.assertEqual(config.harness.max_repair_rounds, 2)
+        self.assertEqual(config.harness.max_api_calls, 6)
+        self.assertEqual(config.harness.max_cost_usd, 0.25)
         self.assertEqual(config.harness.graders, ["unit_tests", "git_diff_stat"])
 
     def test_precedence_defaults_file_env_cli(self):
@@ -134,6 +138,7 @@ class TestLoadConfig(unittest.TestCase):
                     "MINICLAUDECODE_WORKSPACE_ROOT": "env-root",
                     "MINICLAUDECODE_MAX_REPAIR_ROUNDS": "4",
                     "MINICLAUDECODE_HARNESS_GRADERS": "unit_tests,py_compile",
+                    "MINICLAUDECODE_HARNESS_MAX_TOTAL_TOKENS": "123",
                 },
                 cli_overrides={
                     "model.model": "cli-model",
@@ -148,6 +153,7 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.safety.permission_mode, PermissionMode.ASK)
         self.assertEqual(config.harness.max_repair_rounds, 4)
         self.assertEqual(config.harness.graders, ["unit_tests", "py_compile"])
+        self.assertEqual(config.harness.max_total_tokens, 123)
 
     def test_loads_toml_config_and_optional_model_pricing(self):
         with tempfile.TemporaryDirectory() as tmpdir:

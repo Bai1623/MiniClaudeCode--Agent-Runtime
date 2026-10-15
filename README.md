@@ -477,10 +477,17 @@ d / deny    拒绝执行
   "harness": {
     "runs_dir": ".miniclaudecode/runs",
     "max_repair_rounds": 1,
+    "max_api_calls": 20,
+    "max_tool_calls": 100,
+    "max_total_tokens": 100000,
+    "max_duration_seconds": 900,
+    "max_cost_usd": 1.5,
     "graders": ["unit_tests", "py_compile", "git_diff_stat"]
   }
 }
 ```
+
+Harness 预算会在每次模型/工具调用前拦截次数与时长上限，并从 trace 汇总 token 与成本；达到上限后写入 `budget.json`、事件和任务级 `budget_exhausted` 验收报告。Token 和成本只能在模型响应落盘后精确获得，因此单次调用可能使实际值略超出上限；后续调用会被阻止。配置成本预算时，必须同时配置输入与输出单价。
 
 常用环境变量：
 
@@ -496,6 +503,11 @@ d / deny    拒绝执行
 | MINICLAUDECODE_DISABLED_TOOLS | tool_runtime.disabled_tools，逗号分隔 |
 | MINICLAUDECODE_HARNESS_RUNS_DIR | harness.runs_dir |
 | MINICLAUDECODE_MAX_REPAIR_ROUNDS | harness.max_repair_rounds |
+| MINICLAUDECODE_HARNESS_MAX_API_CALLS | harness.max_api_calls |
+| MINICLAUDECODE_HARNESS_MAX_TOOL_CALLS | harness.max_tool_calls |
+| MINICLAUDECODE_HARNESS_MAX_TOTAL_TOKENS | harness.max_total_tokens |
+| MINICLAUDECODE_HARNESS_MAX_DURATION_SECONDS | harness.max_duration_seconds |
+| MINICLAUDECODE_HARNESS_MAX_COST_USD | harness.max_cost_usd |
 | MINICLAUDECODE_HARNESS_GRADERS | harness.graders，逗号分隔 |
 
 ## 目录结构

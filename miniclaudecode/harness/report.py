@@ -73,6 +73,7 @@ class FinalReportGenerator:
             f"Events: {result.artifacts.events_path}",
             f"Evaluator Reports: {result.artifacts.evaluator_reports_dir}",
             f"Traces: {result.artifacts.traces_dir}",
+            f"Budget: {result.artifacts.budget_path}",
         ])
         if result.memory_path is not None:
             lines.append(f"Memory: {result.memory_path}")
@@ -178,7 +179,7 @@ def _render_audit_trail(
 def _render_summary_metrics(summary: dict) -> list[str]:
     tool = summary["tool"]
     model = summary["model"]
-    return [
+    lines = [
         f"Compressed tool calls: {tool['compressed_calls']}",
         "Compression strategies: " + ", ".join(
             f"{name}={count}" for name, count in tool["compression_strategies"].items()
@@ -189,6 +190,14 @@ def _render_summary_metrics(summary: dict) -> list[str]:
         f"Model tokens: input={model['input_tokens']}, output={model['output_tokens']}, cache_read={model['cache_read_input_tokens']}",
         f"Estimated model cost (USD): {model['estimated_cost_usd'] if model['estimated_cost_usd'] is not None else 'not configured'}",
     ]
+    budget = summary.get("budget")
+    if isinstance(budget, dict):
+        usage = budget.get("usage", {})
+        limits = budget.get("limits", {})
+        lines.append(f"Budget status: {budget.get('status', 'unknown')}")
+        lines.append(f"Budget limits: {limits}")
+        lines.append(f"Budget usage: {usage}")
+    return lines
 
 
 def _format_trace_compression(trace: dict) -> str:

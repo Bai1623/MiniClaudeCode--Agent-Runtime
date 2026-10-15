@@ -24,7 +24,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, TextIO, cast
+from typing import Any, Callable, TextIO, cast
 
 from .config import Config
 from .context import ConversationContext
@@ -82,6 +82,7 @@ class AgentLoop:
             tracer=self.tracer,
             output=self.output,
         )
+        self.budget_guard: Callable[[str], Any] | None = None
 
         system_prompt = build_system_prompt(
             self.registry,
@@ -93,6 +94,9 @@ class AgentLoop:
         """Route subsequent tool traces to the provided directory."""
         self.tracer.set_trace_dir(trace_dir)
         self.model_tracer.set_trace_dir(trace_dir)
+
+    def set_budget_guard(self, guard: Callable[[str], Any] | None) -> None:
+        self.budget_guard = guard
 
     def run(self, user_message: str) -> str:
         """Process a user message through the agent loop, returning the final text response."""
@@ -140,6 +144,7 @@ class AgentLoop:
 
     def _call_api(self, *, run_id: str, turn: int) -> Any:
         """Call the Anthropic API with streaming output enabled."""
+        self._check_budget("model_call")
         started_at = datetime.now(timezone.utc)
         with self.client.messages.stream(
             model=self.config.model.model,
@@ -164,6 +169,7 @@ class AgentLoop:
             output_cost_per_million_usd=self.config.model.output_cost_per_million_usd,
             cache_read_cost_per_million_usd=self.config.model.cache_read_cost_per_million_usd,
         )
+        self._check_budget("usage")
         return response
 
     def _parse_response(self, response: Any) -> tuple[list[dict], list[str]]:
@@ -193,7 +199,9 @@ class AgentLoop:
         """Execute each tool call through ToolRuntime, append results."""
         tool_results = []
         for call in tool_calls:
+            AgentLoop._check_budget(self, "tool_call")
             execution = self.tool_runtime.invoke(call, turn=turn, run_id=run_id)
+            AgentLoop._check_budget(self, "usage")
             result = execution.result
             output_preview = result.output
             if len(output_preview) > 300:
@@ -208,3 +216,8 @@ class AgentLoop:
             "role": "user",
             "content": tool_results,
         })
+
+    def _check_budget(self, operation: str) -> None:
+        guard = getattr(self, "budget_guard", None)
+        if guard is not None:
+            guard(operation)

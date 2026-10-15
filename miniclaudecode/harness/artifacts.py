@@ -48,6 +48,10 @@ class RunArtifacts:
         return self.root / "run_state.json"
 
     @property
+    def budget_path(self) -> Path:
+        return self.root / "budget.json"
+
+    @property
     def model_calls_path(self) -> Path:
         return self.traces_dir / "model_calls.jsonl"
 
@@ -165,6 +169,15 @@ class ArtifactStore:
         temporary_path.replace(artifacts.state_path)
         return artifacts.state_path
 
+    def write_budget(self, artifacts: RunArtifacts, budget: dict[str, Any]) -> Path:
+        temporary_path = artifacts.budget_path.with_suffix(".json.tmp")
+        temporary_path.write_text(
+            json.dumps(budget, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(artifacts.budget_path)
+        return artifacts.budget_path
+
     def read_state(self, artifacts: RunArtifacts) -> dict[str, Any]:
         if not artifacts.state_path.is_file():
             raise FileNotFoundError(f"Harness state not found: {artifacts.state_path}")
@@ -202,6 +215,11 @@ def build_run_summary(artifacts: RunArtifacts, *, status: str) -> dict[str, Any]
         reason = str(call.get("stop_reason") or "unknown")
         stop_reasons[reason] = stop_reasons.get(reason, 0) + 1
     known_costs = [call["estimated_cost_usd"] for call in model_calls if call.get("estimated_cost_usd") is not None]
+    budget: dict[str, Any] | None = None
+    if artifacts.budget_path.is_file():
+        value = json.loads(artifacts.budget_path.read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            budget = value
     return {
         "schema_version": 1,
         "run_id": artifacts.run_id,
@@ -216,4 +234,5 @@ def build_run_summary(artifacts: RunArtifacts, *, status: str) -> dict[str, Any]
             "stop_reasons": dict(sorted(stop_reasons.items())),
             "estimated_cost_usd": sum(float(cost) for cost in known_costs) if known_costs else None,
         },
+        "budget": budget,
     }

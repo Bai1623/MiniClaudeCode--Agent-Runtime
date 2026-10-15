@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Callable, Protocol
 
 from .artifacts import ArtifactStore, RunArtifacts
 from .planner import TaskSpec
@@ -40,6 +40,10 @@ class Executor:
     def set_trace_dir(self, trace_dir: str) -> None:
         if hasattr(self.runner, "set_trace_dir"):
             self.runner.set_trace_dir(trace_dir)
+
+    def set_budget_guard(self, guard: Callable[[str], Any] | None) -> None:
+        if hasattr(self.runner, "set_budget_guard"):
+            self.runner.set_budget_guard(guard)
 
     def execute_task(
         self,

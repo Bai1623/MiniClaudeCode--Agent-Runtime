@@ -31,6 +31,7 @@ from .evals import (
     write_comparison_reports,
 )
 from .harness.artifacts import ArtifactStore
+from .harness.budget import RunBudget
 from .harness.evaluator import Evaluator
 from .harness.executor import Executor
 from .harness.planner import Planner, TaskSpec
@@ -223,6 +224,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Max evaluator repair rounds in harness mode.",
     )
+    parser.add_argument("--harness-max-api-calls", type=int, default=None)
+    parser.add_argument("--harness-max-tool-calls", type=int, default=None)
+    parser.add_argument("--harness-max-total-tokens", type=int, default=None)
+    parser.add_argument("--harness-max-duration-seconds", type=float, default=None)
+    parser.add_argument("--harness-max-cost-usd", type=float, default=None)
     parser.add_argument(
         "command_or_prompt",
         nargs="?",
@@ -311,6 +317,11 @@ def build_config(args: argparse.Namespace) -> Config:
             "safety.permission_mode": args.mode,
             "model.max_turns": args.max_turns,
             "harness.max_repair_rounds": args.max_repair_rounds,
+            "harness.max_api_calls": args.harness_max_api_calls,
+            "harness.max_tool_calls": args.harness_max_tool_calls,
+            "harness.max_total_tokens": args.harness_max_total_tokens,
+            "harness.max_duration_seconds": args.harness_max_duration_seconds,
+            "harness.max_cost_usd": args.harness_max_cost_usd,
         },
     )
 
@@ -574,6 +585,15 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
         return 2
 
     config = config or build_config(args)
+    if config.harness.max_cost_usd is not None and (
+        config.model.input_cost_per_million_usd is None
+        or config.model.output_cost_per_million_usd is None
+    ):
+        print(
+            "Error: a harness cost budget requires input and output model pricing.",
+            file=sys.stderr,
+        )
+        return 2
     store = ArtifactStore(base_dir=config.harness.runs_dir)
     agent = build_agent(args, config=config)
     harness = TaskHarness(
@@ -583,6 +603,13 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
         evaluator=Evaluator(enabled_graders=config.harness.graders),
         max_repair_rounds=config.harness.max_repair_rounds,
         memory_store=MemoryStore(),
+        budget=RunBudget(
+            max_api_calls=config.harness.max_api_calls,
+            max_tool_calls=config.harness.max_tool_calls,
+            max_total_tokens=config.harness.max_total_tokens,
+            max_duration_seconds=config.harness.max_duration_seconds,
+            max_cost_usd=config.harness.max_cost_usd,
+        ),
     )
     try:
         if args.resume:
