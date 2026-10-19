@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -77,6 +78,7 @@ class TaskHarness:
         plan = self.planner.build_plan(goal=goal, tasks=tasks, spec=spec)
         self.planner.write_plan_artifacts(self.store, artifacts, plan)
         self._write_state(artifacts, status="created", next_task_index=0, completed_task_ids=[])
+        self._write_checkpoint(artifacts, plan, next_task_index=0, task_results=[], status="planned")
         self._transition(artifacts, "planned", next_task_index=0, completed_task_ids=[])
         return self._execute_plan(artifacts, plan, start_index=0, prior_results=[])
 
@@ -88,15 +90,26 @@ class TaskHarness:
             raise ValueError(f"Harness state run_id does not match requested run: {run_id}")
         if state.get("status") in {"succeeded", "failed", "cancelled"}:
             raise ValueError(f"Harness run is already terminal: {state['status']}")
+        checkpoint = self.store.read_checkpoint(artifacts)
         plan = self._load_plan(artifacts)
-        next_task_index = int(state.get("next_task_index", 0))
+        if checkpoint is None:
+            next_task_index = int(state.get("next_task_index", 0))
+            completed_ids = [str(task_id) for task_id in state.get("completed_task_ids", [])]
+        else:
+            self._validate_checkpoint(artifacts, plan, checkpoint)
+            next_task_index = int(checkpoint["next_task_index"])
+            completed_ids = [str(task_id) for task_id in checkpoint["completed_task_ids"]]
         if next_task_index < 0 or next_task_index > len(plan.tasks):
             raise ValueError(f"Invalid next_task_index in {artifacts.state_path}")
-        completed_ids = [str(task_id) for task_id in state.get("completed_task_ids", [])]
         prior_results = self._load_completed_results(artifacts, plan, completed_ids)
         budget, elapsed = load_persisted_budget(artifacts.budget_path, self.budget)
         self._budget_tracker = BudgetTracker(artifacts, budget, elapsed_base=elapsed)
         self._persist_budget(artifacts, "active")
+        self.store.append_event(artifacts, {
+            "type": "checkpoint_restored" if checkpoint is not None else "checkpoint_missing",
+            "run_id": run_id,
+            "next_task_index": next_task_index,
+        })
         self.store.append_event(artifacts, {"type": "run_resumed", "run_id": run_id, "next_task_index": next_task_index})
         return self._execute_plan(artifacts, plan, start_index=next_task_index, prior_results=prior_results)
 
@@ -144,6 +157,13 @@ class TaskHarness:
                 artifacts,
                 "exhausted" if task_result.status == "budget_exhausted" else "active",
             )
+            self._write_checkpoint(
+                artifacts,
+                plan,
+                next_task_index=index + 1,
+                task_results=task_results,
+                status="planned",
+            )
             self._transition(
                 artifacts,
                 "planned",
@@ -158,6 +178,13 @@ class TaskHarness:
             "completed" if status == "passed" else "exhausted" if any(
                 result.status == "budget_exhausted" for result in task_results
             ) else "completed",
+        )
+        self._write_checkpoint(
+            artifacts,
+            plan,
+            next_task_index=len(plan.tasks),
+            task_results=task_results,
+            status="succeeded" if status == "passed" else "failed",
         )
         self.store.append_event(artifacts, {"type": "run_finished", "status": status})
         memory_path = self._write_task_memory(artifacts, plan, task_results, status)
@@ -204,6 +231,53 @@ class TaskHarness:
             self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "failed"})
 
         return TaskRunResult(task=task, executions=executions, evaluations=evaluations)
+
+    def _write_checkpoint(
+        self,
+        artifacts: RunArtifacts,
+        plan: Plan,
+        *,
+        next_task_index: int,
+        task_results: list[TaskRunResult],
+        status: str,
+    ) -> None:
+        checkpoint = {
+            "schema_version": 1,
+            "run_id": artifacts.run_id,
+            "plan_sha256": self._plan_sha256(artifacts),
+            "status": status,
+            "next_task_index": next_task_index,
+            "completed_task_ids": [result.task.id for result in task_results],
+            "task_statuses": {result.task.id: result.status for result in task_results},
+        }
+        self.store.write_checkpoint(artifacts, checkpoint)
+        self.store.append_event(artifacts, {
+            "type": "checkpoint_written",
+            "next_task_index": next_task_index,
+            "status": status,
+        })
+
+    def _validate_checkpoint(
+        self,
+        artifacts: RunArtifacts,
+        plan: Plan,
+        checkpoint: dict[str, Any],
+    ) -> None:
+        if checkpoint.get("run_id") != artifacts.run_id:
+            raise ValueError(f"Harness checkpoint run_id does not match requested run: {artifacts.run_id}")
+        if checkpoint.get("plan_sha256") != self._plan_sha256(artifacts):
+            raise ValueError("Harness checkpoint does not match the persisted plan.")
+        completed_ids = checkpoint.get("completed_task_ids")
+        next_task_index = checkpoint.get("next_task_index")
+        if not isinstance(completed_ids, list) or not isinstance(next_task_index, int):
+            raise ValueError(f"Invalid harness checkpoint: {artifacts.checkpoint_path}")
+        expected_ids = [task.id for task in plan.tasks[:next_task_index]]
+        if completed_ids != expected_ids:
+            raise ValueError("Harness checkpoint completed tasks do not match the plan boundary.")
+
+    @staticmethod
+    def _plan_sha256(artifacts: RunArtifacts) -> str:
+        return hashlib.sha256(artifacts.plan_path.read_bytes()).hexdigest()
 
     def _require_budget(self, operation: str = "usage") -> None:
         if self._budget_tracker is None:

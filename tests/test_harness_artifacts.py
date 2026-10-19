@@ -21,6 +21,7 @@ class TestRunArtifacts(unittest.TestCase):
         self.assertEqual(artifacts.final_report_path, Path("runs") / "run-1" / "final_report.md")
         self.assertEqual(artifacts.run_summary_path, Path("runs") / "run-1" / "run_summary.json")
         self.assertEqual(artifacts.state_path, Path("runs") / "run-1" / "run_state.json")
+        self.assertEqual(artifacts.checkpoint_path, Path("runs") / "run-1" / "checkpoint.json")
         self.assertEqual(artifacts.tasks_dir, Path("runs") / "run-1" / "tasks")
         self.assertEqual(
             artifacts.evaluator_reports_dir,

@@ -288,9 +288,13 @@ class TestTaskHarness(unittest.TestCase):
 
             artifacts = store.list_runs()[0]
             state = store.read_state(artifacts)
+            checkpoint = store.read_checkpoint(artifacts)
             self.assertEqual(state["status"], "executing")
             self.assertEqual(state["next_task_index"], 1)
             self.assertEqual(state["completed_task_ids"], ["task-001"])
+            self.assertEqual(checkpoint["next_task_index"], 1)
+            self.assertEqual(checkpoint["completed_task_ids"], ["task-001"])
+            self.assertEqual(checkpoint["task_statuses"], {"task-001": "passed"})
 
             resumed = TaskHarness(
                 store=store,
@@ -310,7 +314,24 @@ class TestTaskHarness(unittest.TestCase):
                 [["{python}", "-m", "unittest", "tests.test_config"]],
             )
             self.assertIn({"type": "run_resumed", "run_id": artifacts.run_id, "next_task_index": 1}, events)
+            self.assertIn({"type": "checkpoint_restored", "run_id": artifacts.run_id, "next_task_index": 1}, events)
             self.assertEqual(store.read_state(artifacts)["status"], "succeeded")
+
+    def test_resume_rejects_checkpoint_with_changed_plan(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            harness = TaskHarness(
+                store=store, planner=Planner(), executor=FakeExecutor(), evaluator=FakeEvaluator(["passed"]),
+            )
+            result = harness.run(request="build", goal="build", tasks=[{"title": "task"}])
+            artifacts = result.artifacts
+            state = store.read_state(artifacts)
+            state["status"] = "executing"
+            store.write_state(artifacts, state)
+            artifacts.plan_path.write_text('{"goal":"changed","tasks":[]}', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "does not match the persisted plan"):
+                harness.resume(artifacts.run_id)
 
     def test_resume_restores_blocked_dependency_results(self):
         class InterruptingIndependentExecutor(FakeExecutor):

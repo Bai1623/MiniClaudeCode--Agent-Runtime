@@ -252,7 +252,7 @@ python -m miniclaudecode --list-runs
 python -m miniclaudecode --run-harness "实现一个新功能"
 ```
 
-每个 Harness run 都会持久化 `run_state.json` 和状态迁移事件。进程在任务执行或评估时中断后，可以从首个未完成任务恢复，不会重跑已通过的任务：
+每个 Harness run 都会持久化原子写入的 `checkpoint.json`、`run_state.json` 和状态迁移事件。checkpoint 记录已完成任务、任务结果状态和计划 SHA-256；进程在任务执行或评估时中断后，恢复命令只从最后一个一致的任务边界继续，不会重跑已通过的任务，并会拒绝与原计划不匹配的 checkpoint：
 
 ```bash
 python -m miniclaudecode --resume <run_id>

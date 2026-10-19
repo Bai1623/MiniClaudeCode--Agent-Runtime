@@ -52,6 +52,10 @@ class RunArtifacts:
         return self.root / "budget.json"
 
     @property
+    def checkpoint_path(self) -> Path:
+        return self.root / "checkpoint.json"
+
+    @property
     def model_calls_path(self) -> Path:
         return self.traces_dir / "model_calls.jsonl"
 
@@ -170,13 +174,28 @@ class ArtifactStore:
         return artifacts.state_path
 
     def write_budget(self, artifacts: RunArtifacts, budget: dict[str, Any]) -> Path:
-        temporary_path = artifacts.budget_path.with_suffix(".json.tmp")
+        return self._write_atomic_json(artifacts.budget_path, budget)
+
+    def write_checkpoint(self, artifacts: RunArtifacts, checkpoint: dict[str, Any]) -> Path:
+        return self._write_atomic_json(artifacts.checkpoint_path, checkpoint)
+
+    @staticmethod
+    def _write_atomic_json(path: Path, value: dict[str, Any]) -> Path:
+        temporary_path = path.with_suffix(".json.tmp")
         temporary_path.write_text(
-            json.dumps(budget, ensure_ascii=False, indent=2) + "\n",
+            json.dumps(value, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        temporary_path.replace(artifacts.budget_path)
-        return artifacts.budget_path
+        temporary_path.replace(path)
+        return path
+
+    def read_checkpoint(self, artifacts: RunArtifacts) -> dict[str, Any] | None:
+        if not artifacts.checkpoint_path.is_file():
+            return None
+        value = json.loads(artifacts.checkpoint_path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError(f"Harness checkpoint must be a JSON object: {artifacts.checkpoint_path}")
+        return value
 
     def read_state(self, artifacts: RunArtifacts) -> dict[str, Any]:
         if not artifacts.state_path.is_file():

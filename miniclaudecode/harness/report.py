@@ -74,6 +74,7 @@ class FinalReportGenerator:
             f"Evaluator Reports: {result.artifacts.evaluator_reports_dir}",
             f"Traces: {result.artifacts.traces_dir}",
             f"Budget: {result.artifacts.budget_path}",
+            f"Checkpoint: {result.artifacts.checkpoint_path}",
         ])
         if result.memory_path is not None:
             lines.append(f"Memory: {result.memory_path}")
