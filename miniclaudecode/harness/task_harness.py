@@ -12,11 +12,12 @@ from typing import Any
 from miniclaudecode.memory.records import TaskMemory
 from miniclaudecode.memory.store import MemoryStore
 
-from .artifacts import ArtifactStore, RunArtifacts
+from .artifacts import ArtifactStore, RunArtifacts, read_jsonl
 from .budget import BudgetExceededError, BudgetTracker, RunBudget, load_persisted_budget
 from .evaluator import EvaluationCheck, EvaluationReport, Evaluator
 from .executor import ExecutionResult, Executor
 from .planner import Plan, Planner, TaskSpec
+from .repair_policy import route_repair
 
 
 @dataclass(frozen=True)
@@ -225,12 +226,41 @@ class TaskHarness:
                 self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "passed"})
                 break
 
+            decision = route_repair(
+                evaluation,
+                self._tool_error_types(artifacts, executions[-1]),
+            )
+            self.store.append_event(artifacts, {
+                "type": "repair_routed",
+                "task_id": task.id,
+                "attempt": attempt + 1,
+                **decision.to_dict(),
+            })
+            if not decision.should_retry:
+                self.store.append_event(artifacts, {
+                    "type": "repair_skipped",
+                    "task_id": task.id,
+                    "reason": decision.reason,
+                })
+                self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "failed"})
+                break
             self.store.append_event(artifacts, {"type": "evaluation_failed", "task_id": task.id})
             feedback = self._format_feedback(evaluation)
         else:
             self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "failed"})
 
         return TaskRunResult(task=task, executions=executions, evaluations=evaluations)
+
+    @staticmethod
+    def _tool_error_types(artifacts: RunArtifacts, execution: ExecutionResult) -> list[str]:
+        if execution.run_id is None:
+            return []
+        trace_path = artifacts.traces_dir / f"{execution.run_id}.jsonl"
+        return [
+            str(event["error_type"])
+            for event in read_jsonl(trace_path)
+            if event.get("status") == "error" and event.get("error_type")
+        ]
 
     def _write_checkpoint(
         self,

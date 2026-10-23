@@ -266,6 +266,8 @@ python -m miniclaudecode --run-harness --harness-task "实现核心逻辑" --har
 
 Harness evaluator 通过可配置的 grader registry 执行确定性验收。默认启用 `unit_tests`、`py_compile` 和 `git_diff_stat`；可以在配置文件的 `harness.graders` 或环境变量 `MINICLAUDECODE_HARNESS_GRADERS` 中选择启用项。任务是否通过只取决于实际 grader 结果，不再根据标题或验收描述中是否出现“test/测试”关键词判断。
 
+失败后，Harness 会从该次 Agent tool trace 和 grader metadata 收集 `error_type`，仅对 `validation_error`、`unknown_tool`、`execution_error`、`timeout_error` 自动进入 repair；权限拒绝、工作区越界、预览拒绝和未知类型会终止自动 repair，并记录 `repair_routed` / `repair_skipped` 审计事件。
+
 每个 `TaskSpec` 除文字验收标准外，还可以声明独立的 `test_commands`。命令使用参数数组表示，支持 `{python}` 占位符；执行时不经过 shell。任务计划、任务 Markdown、Agent prompt、evaluator report 和恢复状态都会保留这份契约：
 
 ```python

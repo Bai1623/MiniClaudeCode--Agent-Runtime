@@ -22,13 +22,17 @@ class ExecutionResult:
     task_id: str
     prompt: str
     response: str
+    run_id: str | None = None
 
     def to_event(self) -> dict[str, str]:
-        return {
+        event = {
             "type": "task_executed",
             "task_id": self.task_id,
             "response": self.response,
         }
+        if self.run_id is not None:
+            event["run_id"] = self.run_id
+        return event
 
 
 class Executor:
@@ -54,8 +58,15 @@ class Executor:
     ) -> ExecutionResult:
         prompt = self.build_task_prompt(task, feedback=feedback)
         store.append_event(artifacts, {"type": "task_started", "task_id": task.id})
-        response = self.runner.run(prompt)
-        result = ExecutionResult(task_id=task.id, prompt=prompt, response=response)
+        run_with_result = getattr(self.runner, "run_with_result", None)
+        if callable(run_with_result):
+            agent_result = run_with_result(prompt)
+            response = str(agent_result.text)
+            run_id = str(agent_result.run_id)
+        else:
+            response = self.runner.run(prompt)
+            run_id = None
+        result = ExecutionResult(task_id=task.id, prompt=prompt, response=response, run_id=run_id)
         store.append_event(artifacts, result.to_event())
         return result
 

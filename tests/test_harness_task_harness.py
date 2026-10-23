@@ -65,6 +65,25 @@ class FakeEvaluator:
         return report
 
 
+class ErrorTypeEvaluator(FakeEvaluator):
+    def __init__(self, statuses: list[str], error_type: str) -> None:
+        super().__init__(statuses)
+        self.error_type = error_type
+
+    def evaluate_task(self, store, artifacts, task):
+        report = super().evaluate_task(store, artifacts, task)
+        updated = EvaluationReport(
+            task_id=report.task_id,
+            status=report.status,
+            checks=[EvaluationCheck(
+                name="unit_tests", status=report.status, message="failed",
+                metadata={"error_type": self.error_type},
+            )],
+        )
+        store.write_evaluator_report(artifacts, task.id, updated.to_dict())
+        return updated
+
+
 class TestHarnessResults(unittest.TestCase):
     def test_task_run_result_status(self):
         task = TaskSpec(id="task-001", title="Task")
@@ -94,6 +113,33 @@ class TestHarnessResults(unittest.TestCase):
 
 
 class TestTaskHarness(unittest.TestCase):
+    def test_nonrecoverable_error_type_skips_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            executor = FakeExecutor()
+            result = TaskHarness(
+                store=store, planner=Planner(), executor=executor,
+                evaluator=ErrorTypeEvaluator(["failed", "passed"], "permission_denied"),
+                max_repair_rounds=1,
+            ).run(request="build", goal="build", tasks=[{"title": "task"}])
+            events = [json.loads(line) for line in result.artifacts.events_path.read_text(encoding="utf-8").splitlines()]
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(len(executor.task_ids), 1)
+        self.assertTrue(any(event["type"] == "repair_skipped" for event in events))
+
+    def test_recoverable_error_type_enters_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            executor = FakeExecutor()
+            result = TaskHarness(
+                store=store, planner=Planner(), executor=executor,
+                evaluator=ErrorTypeEvaluator(["failed", "passed"], "validation_error"),
+                max_repair_rounds=1,
+            ).run(request="build", goal="build", tasks=[{"title": "task"}])
+
+        self.assertEqual(result.status, "passed")
+        self.assertEqual(len(executor.task_ids), 2)
     def test_budget_stops_later_independent_tasks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ArtifactStore(base_dir=tmpdir)
