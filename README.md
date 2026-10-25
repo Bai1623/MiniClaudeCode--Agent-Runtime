@@ -268,6 +268,8 @@ Harness evaluator 通过可配置的 grader registry 执行确定性验收。默
 
 失败后，Harness 会从该次 Agent tool trace 和 grader metadata 收集 `error_type`，仅对 `validation_error`、`unknown_tool`、`execution_error`、`timeout_error` 自动进入 repair；权限拒绝、工作区越界、预览拒绝和未知类型会终止自动 repair，并记录 `repair_routed` / `repair_skipped` 审计事件。
 
+`max_repair_rounds` 限制每个任务额外 repair 的次数；`repair_backoff_initial_seconds` 和 `repair_backoff_multiplier` 控制指数退避。每次等待前都会写入 `repair_scheduled`，实际重试写入 `repair_started`，两者都包含 retry 编号、延迟与原因，默认初始延迟为 0，因此兼容原有即时重试行为。
+
 每个 `TaskSpec` 除文字验收标准外，还可以声明独立的 `test_commands`。命令使用参数数组表示，支持 `{python}` 占位符；执行时不经过 shell。任务计划、任务 Markdown、Agent prompt、evaluator report 和恢复状态都会保留这份契约：
 
 ```python
@@ -479,6 +481,8 @@ d / deny    拒绝执行
   "harness": {
     "runs_dir": ".miniclaudecode/runs",
     "max_repair_rounds": 1,
+    "repair_backoff_initial_seconds": 0.0,
+    "repair_backoff_multiplier": 2.0,
     "max_api_calls": 20,
     "max_tool_calls": 100,
     "max_total_tokens": 100000,
@@ -505,6 +509,8 @@ Harness 预算会在每次模型/工具调用前拦截次数与时长上限，�
 | MINICLAUDECODE_DISABLED_TOOLS | tool_runtime.disabled_tools，逗号分隔 |
 | MINICLAUDECODE_HARNESS_RUNS_DIR | harness.runs_dir |
 | MINICLAUDECODE_MAX_REPAIR_ROUNDS | harness.max_repair_rounds |
+| MINICLAUDECODE_REPAIR_BACKOFF_INITIAL_SECONDS | harness.repair_backoff_initial_seconds |
+| MINICLAUDECODE_REPAIR_BACKOFF_MULTIPLIER | harness.repair_backoff_multiplier |
 | MINICLAUDECODE_HARNESS_MAX_API_CALLS | harness.max_api_calls |
 | MINICLAUDECODE_HARNESS_MAX_TOOL_CALLS | harness.max_tool_calls |
 | MINICLAUDECODE_HARNESS_MAX_TOTAL_TOKENS | harness.max_total_tokens |

@@ -96,6 +96,8 @@ class TestLoadConfig(unittest.TestCase):
                     "harness": {
                         "runs_dir": "file-runs",
                         "max_repair_rounds": 2,
+                        "repair_backoff_initial_seconds": 0.5,
+                        "repair_backoff_multiplier": 3,
                         "max_api_calls": 6,
                         "max_cost_usd": 0.25,
                         "graders": ["unit_tests", "git_diff_stat"],
@@ -115,6 +117,8 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.safety.allowed_commands, ["git status"])
         self.assertEqual(config.harness.runs_dir, "file-runs")
         self.assertEqual(config.harness.max_repair_rounds, 2)
+        self.assertEqual(config.harness.repair_backoff_initial_seconds, 0.5)
+        self.assertEqual(config.harness.repair_backoff_multiplier, 3)
         self.assertEqual(config.harness.max_api_calls, 6)
         self.assertEqual(config.harness.max_cost_usd, 0.25)
         self.assertEqual(config.harness.graders, ["unit_tests", "git_diff_stat"])

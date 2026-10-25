@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from miniclaudecode.memory.records import TaskMemory
 from miniclaudecode.memory.store import MemoryStore
@@ -58,14 +59,24 @@ class TaskHarness:
         executor: Executor,
         evaluator: Evaluator,
         max_repair_rounds: int = 1,
+        repair_backoff_initial_seconds: float = 0.0,
+        repair_backoff_multiplier: float = 2.0,
         memory_store: MemoryStore | None = None,
         budget: RunBudget | None = None,
+        sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         self.store = store
         self.planner = planner
         self.executor = executor
         self.evaluator = evaluator
         self.max_repair_rounds = max(0, max_repair_rounds)
+        if repair_backoff_initial_seconds < 0:
+            raise ValueError("repair_backoff_initial_seconds must be non-negative.")
+        if repair_backoff_multiplier <= 0:
+            raise ValueError("repair_backoff_multiplier must be positive.")
+        self.repair_backoff_initial_seconds = repair_backoff_initial_seconds
+        self.repair_backoff_multiplier = repair_backoff_multiplier
+        self.sleeper = sleeper
         self.memory_store = memory_store
         self.budget = budget or RunBudget()
         self._budget_tracker: BudgetTracker | None = None
@@ -206,11 +217,19 @@ class TaskHarness:
         executions: list[ExecutionResult] = []
         evaluations: list[EvaluationReport] = []
         feedback = ""
+        retry_delay = 0.0
+        retry_reason = ""
 
         for attempt in range(self.max_repair_rounds + 1):
             try:
                 if attempt > 0:
-                    self.store.append_event(artifacts, {"type": "repair_started", "task_id": task.id})
+                    if retry_delay:
+                        self.sleeper(retry_delay)
+                    self.store.append_event(artifacts, {
+                        "type": "repair_started", "task_id": task.id,
+                        "retry_number": attempt, "delay_seconds": retry_delay,
+                        "reason": retry_reason,
+                    })
                 self._require_budget("model_call")
                 executions.append(self.executor.execute_task(self.store, artifacts, task, feedback=feedback))
                 self._require_budget()
@@ -245,11 +264,24 @@ class TaskHarness:
                 self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "failed"})
                 break
             self.store.append_event(artifacts, {"type": "evaluation_failed", "task_id": task.id})
+            if attempt < self.max_repair_rounds:
+                retry_delay = self._repair_delay(attempt + 1)
+                retry_reason = decision.reason
+                self.store.append_event(artifacts, {
+                    "type": "repair_scheduled", "task_id": task.id,
+                    "retry_number": attempt + 1, "delay_seconds": retry_delay,
+                    "reason": retry_reason,
+                })
             feedback = self._format_feedback(evaluation)
         else:
             self.store.append_event(artifacts, {"type": "task_finished", "task_id": task.id, "status": "failed"})
 
         return TaskRunResult(task=task, executions=executions, evaluations=evaluations)
+
+    def _repair_delay(self, retry_number: int) -> float:
+        return self.repair_backoff_initial_seconds * (
+            self.repair_backoff_multiplier ** (retry_number - 1)
+        )
 
     @staticmethod
     def _tool_error_types(artifacts: RunArtifacts, execution: ExecutionResult) -> list[str]:

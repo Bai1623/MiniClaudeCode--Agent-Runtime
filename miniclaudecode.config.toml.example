@@ -20,6 +20,9 @@ permission_mode = "ask"
 [harness]
 runs_dir = ".miniclaudecode/runs"
 max_repair_rounds = 1
+# The first repair waits this many seconds; later retries multiply it.
+repair_backoff_initial_seconds = 0.0
+repair_backoff_multiplier = 2.0
 # Optional run-level resource budgets; omitted means unlimited.
 # max_api_calls = 20
 # max_tool_calls = 100

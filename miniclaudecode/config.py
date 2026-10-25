@@ -57,6 +57,8 @@ class SafetyConfig:
 class HarnessConfig:
     runs_dir: str = ".miniclaudecode/runs"
     max_repair_rounds: int = 1
+    repair_backoff_initial_seconds: float = 0.0
+    repair_backoff_multiplier: float = 2.0
     max_api_calls: int | None = None
     max_tool_calls: int | None = None
     max_total_tokens: int | None = None
@@ -96,6 +98,8 @@ class Config:
         denied_patterns: list[str] | None = None,
         harness_runs_dir: str | None = None,
         max_repair_rounds: int | None = None,
+        repair_backoff_initial_seconds: float | None = None,
+        repair_backoff_multiplier: float | None = None,
         harness_graders: list[str] | None = None,
         harness_max_api_calls: int | None = None,
         harness_max_tool_calls: int | None = None,
@@ -142,6 +146,10 @@ class Config:
             self.harness.runs_dir = harness_runs_dir
         if max_repair_rounds is not None:
             self.harness.max_repair_rounds = max_repair_rounds
+        if repair_backoff_initial_seconds is not None:
+            self.harness.repair_backoff_initial_seconds = repair_backoff_initial_seconds
+        if repair_backoff_multiplier is not None:
+            self.harness.repair_backoff_multiplier = repair_backoff_multiplier
         if harness_graders is not None:
             self.harness.graders = list(harness_graders)
         for name, value in {
@@ -311,6 +319,8 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         "MINICLAUDECODE_WORKSPACE_ROOT": "safety.workspace_root",
         "MINICLAUDECODE_HARNESS_RUNS_DIR": "harness.runs_dir",
         "MINICLAUDECODE_MAX_REPAIR_ROUNDS": "harness.max_repair_rounds",
+        "MINICLAUDECODE_REPAIR_BACKOFF_INITIAL_SECONDS": "harness.repair_backoff_initial_seconds",
+        "MINICLAUDECODE_REPAIR_BACKOFF_MULTIPLIER": "harness.repair_backoff_multiplier",
         "MINICLAUDECODE_HARNESS_MAX_API_CALLS": "harness.max_api_calls",
         "MINICLAUDECODE_HARNESS_MAX_TOOL_CALLS": "harness.max_tool_calls",
         "MINICLAUDECODE_HARNESS_MAX_TOTAL_TOKENS": "harness.max_total_tokens",
@@ -388,6 +398,10 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.harness.runs_dir = str(value)
     elif key in {"max_repair_rounds", "harness.max_repair_rounds"}:
         config.harness.max_repair_rounds = _parse_int(key, value)
+    elif key == "harness.repair_backoff_initial_seconds":
+        config.harness.repair_backoff_initial_seconds = _parse_nonnegative_float(key, value)
+    elif key == "harness.repair_backoff_multiplier":
+        config.harness.repair_backoff_multiplier = _parse_positive_float(key, value)
     elif key.startswith("harness.max_"):
         attribute = key.removeprefix("harness.")
         if attribute in {"max_api_calls", "max_tool_calls", "max_total_tokens"}:
@@ -432,6 +446,20 @@ def _parse_optional_positive_int(key: str, value: Any) -> int | None:
 def _parse_optional_positive_float(key: str, value: Any) -> float | None:
     if value is None:
         return None
+    parsed = _parse_optional_float(key, value)
+    if parsed is None or parsed <= 0:
+        raise ValueError(f"Config value '{key}' must be positive.")
+    return parsed
+
+
+def _parse_nonnegative_float(key: str, value: Any) -> float:
+    parsed = _parse_optional_float(key, value)
+    if parsed is None or parsed < 0:
+        raise ValueError(f"Config value '{key}' must be non-negative.")
+    return parsed
+
+
+def _parse_positive_float(key: str, value: Any) -> float:
     parsed = _parse_optional_float(key, value)
     if parsed is None or parsed <= 0:
         raise ValueError(f"Config value '{key}' must be positive.")

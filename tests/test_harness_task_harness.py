@@ -113,6 +113,24 @@ class TestHarnessResults(unittest.TestCase):
 
 
 class TestTaskHarness(unittest.TestCase):
+    def test_repair_records_exponential_backoff_without_real_sleep(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ArtifactStore(base_dir=tmpdir)
+            delays: list[float] = []
+            result = TaskHarness(
+                store=store, planner=Planner(), executor=FakeExecutor(),
+                evaluator=FakeEvaluator(["failed", "failed", "passed"]),
+                max_repair_rounds=2, repair_backoff_initial_seconds=0.5,
+                repair_backoff_multiplier=3, sleeper=delays.append,
+            ).run(request="build", goal="build", tasks=[{"title": "task"}])
+            events = [json.loads(line) for line in result.artifacts.events_path.read_text(encoding="utf-8").splitlines()]
+
+        scheduled = [event for event in events if event["type"] == "repair_scheduled"]
+        self.assertEqual(result.status, "passed")
+        self.assertEqual(delays, [0.5, 1.5])
+        self.assertEqual([event["delay_seconds"] for event in scheduled], [0.5, 1.5])
+        self.assertTrue(all(event["reason"] for event in scheduled))
+
     def test_nonrecoverable_error_type_skips_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ArtifactStore(base_dir=tmpdir)

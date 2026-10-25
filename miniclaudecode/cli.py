@@ -224,6 +224,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Max evaluator repair rounds in harness mode.",
     )
+    parser.add_argument("--repair-backoff-initial-seconds", type=float, default=None)
+    parser.add_argument("--repair-backoff-multiplier", type=float, default=None)
     parser.add_argument("--harness-max-api-calls", type=int, default=None)
     parser.add_argument("--harness-max-tool-calls", type=int, default=None)
     parser.add_argument("--harness-max-total-tokens", type=int, default=None)
@@ -317,6 +319,8 @@ def build_config(args: argparse.Namespace) -> Config:
             "safety.permission_mode": args.mode,
             "model.max_turns": args.max_turns,
             "harness.max_repair_rounds": args.max_repair_rounds,
+            "harness.repair_backoff_initial_seconds": args.repair_backoff_initial_seconds,
+            "harness.repair_backoff_multiplier": args.repair_backoff_multiplier,
             "harness.max_api_calls": args.harness_max_api_calls,
             "harness.max_tool_calls": args.harness_max_tool_calls,
             "harness.max_total_tokens": args.harness_max_total_tokens,
@@ -602,6 +606,8 @@ def run_harness(args: argparse.Namespace, config: Config | None = None) -> int:
         executor=Executor(agent),
         evaluator=Evaluator(enabled_graders=config.harness.graders),
         max_repair_rounds=config.harness.max_repair_rounds,
+        repair_backoff_initial_seconds=config.harness.repair_backoff_initial_seconds,
+        repair_backoff_multiplier=config.harness.repair_backoff_multiplier,
         memory_store=MemoryStore(),
         budget=RunBudget(
             max_api_calls=config.harness.max_api_calls,
