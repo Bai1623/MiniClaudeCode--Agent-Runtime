@@ -149,6 +149,9 @@ class ToolRuntime:
         try:
             return future.result(timeout=tool.timeout_seconds)
         except TimeoutError:
+            cancel = getattr(tool, "cancel", None)
+            if callable(cancel):
+                cancel()
             future.cancel()
             return ToolResult(
                 output=f"Error: tool '{tool.name}' timed out after {tool.timeout_seconds}s",

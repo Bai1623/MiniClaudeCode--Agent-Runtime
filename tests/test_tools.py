@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -151,6 +152,22 @@ class TestBashTool(unittest.TestCase):
             result = tool.execute({"command": "pwd"})
         self.assertFalse(result.is_error)
         self.assertIn(tmpdir, result.output)
+
+    def test_timeout_terminates_process_tree(self):
+        class ShortTimeoutBashTool(BashTool):
+            @property
+            def timeout_seconds(self) -> int:
+                return 1
+
+        started_at = time.monotonic()
+        result = ShortTimeoutBashTool().execute(
+            {"command": 'python -c "import time; time.sleep(3)"'}
+        )
+
+        self.assertLess(time.monotonic() - started_at, 2.5)
+        self.assertTrue(result.is_error)
+        self.assertEqual(result.error_type, "timeout_error")
+        self.assertTrue(result.metadata["process_tree_terminated"])
 
 
 class TestFileReadTool(unittest.TestCase):

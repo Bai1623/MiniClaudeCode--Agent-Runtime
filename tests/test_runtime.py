@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import time
 import unittest
 from datetime import datetime, timezone
@@ -46,6 +47,21 @@ class SlowTool(Tool):
     def execute(self, params: dict[str, Any]) -> ToolResult:
         time.sleep(0.05)
         return ToolResult(output="too late")
+
+
+class CancellableSlowTool(SlowTool):
+    def __init__(self) -> None:
+        self.cancelled = threading.Event()
+        self.cancel_calls = 0
+
+    def execute(self, params: dict[str, Any]) -> ToolResult:
+        self.cancelled.wait(timeout=1)
+        return ToolResult(output="cancelled")
+
+    def cancel(self) -> bool:
+        self.cancel_calls += 1
+        self.cancelled.set()
+        return True
 
 
 class FlakyReadTool(Tool):
@@ -548,6 +564,18 @@ class TestToolRuntime(unittest.TestCase):
         execution = runtime.invoke({"id": "1", "name": "slow", "input": {}}, turn=1, run_id="run")
         self.assertTrue(execution.result.is_error)
         self.assertEqual(execution.result.error_type, "timeout_error")
+
+    def test_timeout_calls_tool_cancellation_hook(self):
+        tool = CancellableSlowTool()
+        registry = ToolRegistry()
+        registry.register(tool)
+        runtime = self.make_runtime(registry)
+
+        execution = runtime.invoke({"id": "1", "name": "slow", "input": {}}, turn=1, run_id="run")
+
+        self.assertEqual(execution.result.error_type, "timeout_error")
+        self.assertEqual(tool.cancel_calls, 1)
+        self.assertTrue(tool.cancelled.is_set())
 
     def test_retryable_tool_retries_execution_error(self):
         tool = FlakyReadTool()

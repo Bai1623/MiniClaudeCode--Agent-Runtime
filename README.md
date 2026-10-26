@@ -270,6 +270,8 @@ Harness evaluator 通过可配置的 grader registry 执行确定性验收。默
 
 `max_repair_rounds` 限制每个任务额外 repair 的次数；`repair_backoff_initial_seconds` 和 `repair_backoff_multiplier` 控制指数退避。每次等待前都会写入 `repair_scheduled`，实际重试写入 `repair_started`，两者都包含 retry 编号、延迟与原因，默认初始延迟为 0，因此兼容原有即时重试行为。
 
+`bash` 工具以独立进程组运行。无论是工具自身超时还是 Runtime 的统一超时，都会终止 shell 及其子进程树，并返回带有 `process_tree_terminated=true` 的 `timeout_error`，避免 timeout 后后台命令继续产生副作用。
+
 每个 `TaskSpec` 除文字验收标准外，还可以声明独立的 `test_commands`。命令使用参数数组表示，支持 `{python}` 占位符；执行时不经过 shell。任务计划、任务 Markdown、Agent prompt、evaluator report 和恢复状态都会保留这份契约：
 
 ```python
