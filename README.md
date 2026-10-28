@@ -272,6 +272,8 @@ Harness evaluator 通过可配置的 grader registry 执行确定性验收。默
 
 `bash` 工具以独立进程组运行。无论是工具自身超时还是 Runtime 的统一超时，都会终止 shell 及其子进程树，并返回带有 `process_tree_terminated=true` 的 `timeout_error`，避免 timeout 后后台命令继续产生副作用。
 
+对非只读工具，Runtime 会在同一 Agent run 内以“工具名、版本、规范化参数”的 SHA-256 生成幂等键。成功调用后收到完全相同的重复请求时，不会再次执行或再次弹出 preview，而是复用首次结果，并在 trace 中留下 `deduplicated`、幂等键与原始 tool call ID；新的 Agent run 会清空该去重范围。
+
 每个 `TaskSpec` 除文字验收标准外，还可以声明独立的 `test_commands`。命令使用参数数组表示，支持 `{python}` 占位符；执行时不经过 shell。任务计划、任务 Markdown、Agent prompt、evaluator report 和恢复状态都会保留这份契约：
 
 ```python

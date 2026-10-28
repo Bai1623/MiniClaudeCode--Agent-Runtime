@@ -113,6 +113,8 @@ def build_tool_call_event(
         "output_chars": len(result.output),
         "compressed": bool(result.metadata.get("compressed")),
         "retried": bool(result.metadata.get("retried")),
+        "deduplicated": bool(result.metadata.get("deduplicated")),
+        "idempotency_key": result.metadata.get("idempotency_key"),
         "original_output_chars": result.metadata.get("original_output_chars"),
         "kept_snippet_lines": result.metadata.get("kept_snippet_lines"),
         "snippet_truncated": result.metadata.get("snippet_truncated"),

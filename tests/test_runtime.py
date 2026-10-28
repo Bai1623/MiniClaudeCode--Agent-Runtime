@@ -499,6 +499,26 @@ class TestToolRuntime(unittest.TestCase):
         self.assertTrue(execution.result.is_error)
         self.assertEqual(execution.result.error_type, "preview_rejected")
 
+    def test_duplicate_side_effect_is_deduplicated_within_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "dedup.txt"
+            config = Config(permission_mode=PermissionMode.AUTO, workspace_root=tmpdir)
+            registry = ToolRegistry()
+            registry.register(FileWriteTool(config=config))
+            runtime = self.make_runtime(registry, config=config)
+            call = {"name": "write_file", "input": {"path": "dedup.txt", "content": "first"}}
+            first = runtime.invoke({"id": "one", **call}, turn=1, run_id="run-one")
+            path.write_text("external change", encoding="utf-8")
+            duplicate = runtime.invoke({"id": "two", **call}, turn=2, run_id="run-one")
+            next_run = runtime.invoke({"id": "three", **call}, turn=1, run_id="run-two")
+
+            self.assertEqual(path.read_text(encoding="utf-8"), "first")
+
+        self.assertFalse(first.result.metadata["deduplicated"] if "deduplicated" in first.result.metadata else False)
+        self.assertTrue(duplicate.result.metadata["deduplicated"])
+        self.assertEqual(duplicate.result.metadata["original_tool_use_id"], "one")
+        self.assertFalse(next_run.result.metadata.get("deduplicated", False))
+
     def test_preview_prompt_shows_target_and_diff_summary(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             registry = ToolRegistry()

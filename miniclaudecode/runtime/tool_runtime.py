@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
@@ -68,6 +70,8 @@ class ToolRuntime:
         self.confirm_callback = confirm_callback or _default_confirm_callback
         self.output = output or sys.stdout
         self._permanent_preview_allows: set[tuple[str, str]] = set()
+        self._idempotency_run_id: str | None = None
+        self._successful_side_effects: dict[tuple[str, str], tuple[str, ToolResult]] = {}
 
     def invoke(self, call: dict, turn: int, run_id: str) -> ToolExecution:
         started_at = _utc_now()
@@ -97,12 +101,57 @@ class ToolRuntime:
             )
             return self._finish(call, tool.name, params, result, started_at, turn, run_id)
 
+        self._prepare_run_state(run_id)
+        idempotency_key = self._idempotency_key(tool, params)
+        if not tool.is_read_only:
+            cached = self._successful_side_effects.get((tool.name, idempotency_key))
+            if cached is not None:
+                original_tool_use_id, original_result = cached
+                metadata = dict(original_result.metadata)
+                metadata.update({
+                    "deduplicated": True,
+                    "idempotency_key": idempotency_key,
+                    "original_tool_use_id": original_tool_use_id,
+                })
+                result = ToolResult(
+                    output=original_result.output,
+                    is_error=original_result.is_error,
+                    error_type=original_result.error_type,
+                    metadata=metadata,
+                )
+                return self._finish(call, tool.name, params, result, started_at, turn, run_id)
+
         preview_result = self._handle_preview(tool, params)
         if preview_result is not None:
             return self._finish(call, tool.name, params, preview_result, started_at, turn, run_id)
 
         result = self._execute_with_retry(tool, params)
+        if not tool.is_read_only and not result.is_error:
+            metadata = dict(result.metadata)
+            metadata["idempotency_key"] = idempotency_key
+            result = ToolResult(
+                output=result.output,
+                is_error=False,
+                error_type=result.error_type,
+                metadata=metadata,
+            )
+            self._successful_side_effects[(tool.name, idempotency_key)] = (
+                str(call.get("id", "")), result,
+            )
         return self._finish(call, tool.name, params, result, started_at, turn, run_id)
+
+    def _prepare_run_state(self, run_id: str) -> None:
+        if self._idempotency_run_id != run_id:
+            self._idempotency_run_id = run_id
+            self._successful_side_effects.clear()
+
+    @staticmethod
+    def _idempotency_key(tool: Tool, params: dict) -> str:
+        canonical_params = json.dumps(
+            params, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str,
+        )
+        payload = f"{tool.name}:{tool.version}:{canonical_params}".encode()
+        return hashlib.sha256(payload).hexdigest()
 
     @staticmethod
     def _call_input(call: dict) -> dict:
