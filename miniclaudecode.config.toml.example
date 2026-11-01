@@ -12,6 +12,7 @@ max_tool_result_chars = 12000
 tool_result_head_chars = 8000
 tool_result_tail_chars = 4000
 tool_result_snippet_lines = 80
+max_parallel_read_only_calls = 4
 
 [safety]
 workspace_root = "."

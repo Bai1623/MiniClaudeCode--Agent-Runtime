@@ -39,3 +39,14 @@ class TestBudgetTracker(unittest.TestCase):
             RunBudget(max_api_calls=1.5)
         with self.assertRaises(ValueError):
             RunBudget(max_cost_usd=0)
+
+    def test_reserves_parallel_tool_call_budget_before_execution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tracker = BudgetTracker(
+                ArtifactStore(tmpdir).create_run(), RunBudget(max_tool_calls=1),
+            )
+
+            tracker.check("tool_call")
+            with self.assertRaises(BudgetExceededError):
+                tracker.check("tool_call")
+            tracker.check("tool_call_complete")

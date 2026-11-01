@@ -473,6 +473,7 @@ d / deny    拒绝执行
     "max_tool_result_chars": 12000,
     "tool_result_head_chars": 8000,
     "tool_result_tail_chars": 4000,
+    "max_parallel_read_only_calls": 4,
     "enabled_tools": [],
     "disabled_tools": []
   },
@@ -505,6 +506,7 @@ Harness 预算会在每次模型/工具调用前拦截次数与时长上限，�
 | --- | --- |
 | MINICLAUDECODE_MODEL | model.model |
 | MINICLAUDECODE_MAX_TURNS | model.max_turns |
+| MINICLAUDECODE_MAX_PARALLEL_READ_ONLY_CALLS | tool_runtime.max_parallel_read_only_calls |
 | MINICLAUDECODE_WORKSPACE_ROOT | safety.workspace_root |
 | MINICLAUDECODE_PERMISSION_MODE | safety.permission_mode |
 | MINICLAUDECODE_ALLOWED_COMMANDS | safety.allowed_commands，逗号分隔 |

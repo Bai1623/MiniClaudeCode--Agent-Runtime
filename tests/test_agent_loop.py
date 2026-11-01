@@ -7,6 +7,8 @@ surrounding components that don't need network access.
 from __future__ import annotations
 
 import sys
+import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -75,6 +77,19 @@ class StaticTool(Tool):
 
     def execute(self, params):
         return ToolResult(output="tool output")
+
+
+class ReadOnlyStaticTool(StaticTool):
+    def __init__(self, tool_name: str) -> None:
+        self.tool_name = tool_name
+
+    @property
+    def name(self) -> str:
+        return self.tool_name
+
+    @property
+    def is_read_only(self) -> bool:
+        return True
 
 
 class TestPermissionGate(unittest.TestCase):
@@ -196,6 +211,38 @@ class TestToolResultDataclass(unittest.TestCase):
 
 
 class TestAgentLoopRuntimeIntegration(unittest.TestCase):
+    def test_read_only_calls_run_concurrently_with_stable_result_order(self):
+        registry = ToolRegistry()
+        registry.register(ReadOnlyStaticTool("read_a"))
+        registry.register(ReadOnlyStaticTool("read_b"))
+        agent = AgentLoop(
+            config=Config(max_parallel_read_only_calls=2), registry=registry, output=StringIO(),
+        )
+
+        class ParallelRuntime:
+            def __init__(self) -> None:
+                self.barrier = threading.Barrier(2)
+
+            def invoke(self, call, turn, run_id):
+                self.barrier.wait(timeout=0.3)
+                return ToolExecution(call["id"], ToolResult(output=call["name"]))
+
+        agent.tool_runtime = ParallelRuntime()
+        started_at = time.monotonic()
+        agent._execute_tool_calls(
+            [
+                {"id": "one", "name": "read_a", "input": {}},
+                {"id": "two", "name": "read_b", "input": {}},
+            ],
+            turn=1,
+            run_id="run",
+        )
+
+        self.assertLess(time.monotonic() - started_at, 0.25)
+        self.assertEqual(
+            [item["tool_use_id"] for item in agent.context.messages[-1]["content"]],
+            ["one", "two"],
+        )
     def test_execute_tool_calls_delegates_to_runtime(self):
         agent = SimpleNamespace()
         agent.context = ConversationContext(config=Config())

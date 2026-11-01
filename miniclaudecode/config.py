@@ -32,6 +32,7 @@ class ToolRuntimeConfig:
     tool_result_head_chars: int = 8_000
     tool_result_tail_chars: int = 4_000
     tool_result_snippet_lines: int = 80
+    max_parallel_read_only_calls: int = 4
     enabled_tools: list[str] = field(default_factory=list)
     disabled_tools: list[str] = field(default_factory=list)
 
@@ -90,6 +91,7 @@ class Config:
         tool_result_head_chars: int | None = None,
         tool_result_tail_chars: int | None = None,
         tool_result_snippet_lines: int | None = None,
+        max_parallel_read_only_calls: int | None = None,
         enabled_tools: list[str] | None = None,
         disabled_tools: list[str] | None = None,
         permission_mode: PermissionMode | str | None = None,
@@ -130,6 +132,8 @@ class Config:
             self.tool_runtime.tool_result_tail_chars = tool_result_tail_chars
         if tool_result_snippet_lines is not None:
             self.tool_runtime.tool_result_snippet_lines = tool_result_snippet_lines
+        if max_parallel_read_only_calls is not None:
+            self.tool_runtime.max_parallel_read_only_calls = max_parallel_read_only_calls
         if enabled_tools is not None:
             self.tool_runtime.enabled_tools = list(enabled_tools)
         if disabled_tools is not None:
@@ -315,6 +319,7 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         "MINICLAUDECODE_TOOL_RESULT_HEAD_CHARS": "tool_runtime.tool_result_head_chars",
         "MINICLAUDECODE_TOOL_RESULT_TAIL_CHARS": "tool_runtime.tool_result_tail_chars",
         "MINICLAUDECODE_TOOL_RESULT_SNIPPET_LINES": "tool_runtime.tool_result_snippet_lines",
+        "MINICLAUDECODE_MAX_PARALLEL_READ_ONLY_CALLS": "tool_runtime.max_parallel_read_only_calls",
         "MINICLAUDECODE_PERMISSION_MODE": "safety.permission_mode",
         "MINICLAUDECODE_WORKSPACE_ROOT": "safety.workspace_root",
         "MINICLAUDECODE_HARNESS_RUNS_DIR": "harness.runs_dir",
@@ -382,6 +387,8 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.tool_runtime.tool_result_tail_chars = _parse_int(key, value)
     elif key in {"tool_result_snippet_lines", "tool_runtime.tool_result_snippet_lines"}:
         config.tool_runtime.tool_result_snippet_lines = _parse_int(key, value)
+    elif key == "tool_runtime.max_parallel_read_only_calls":
+        config.tool_runtime.max_parallel_read_only_calls = _parse_positive_int(key, value)
     elif key in {"enabled_tools", "tool_runtime.enabled_tools"}:
         config.tool_runtime.enabled_tools = _parse_string_list(key, value)
     elif key in {"disabled_tools", "tool_runtime.disabled_tools"}:
@@ -423,6 +430,13 @@ def _parse_int(key: str, value: Any) -> int:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Config value '{key}' must be an integer.") from exc
+
+
+def _parse_positive_int(key: str, value: Any) -> int:
+    parsed = _parse_int(key, value)
+    if parsed <= 0:
+        raise ValueError(f"Config value '{key}' must be positive.")
+    return parsed
 
 
 def _parse_optional_float(key: str, value: Any) -> float | None:

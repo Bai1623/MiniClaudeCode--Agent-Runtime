@@ -77,6 +77,7 @@ class BudgetTracker:
         self.elapsed_base = elapsed_base
         self.clock = clock
         self.started_at = clock()
+        self._reserved_tool_calls = 0
 
     def usage(self) -> BudgetUsage:
         model_calls = read_jsonl(self.artifacts.model_calls_path)
@@ -111,7 +112,7 @@ class BudgetTracker:
     def check(self, operation: str = "usage") -> BudgetUsage:
         usage = self.usage()
         projected_api_calls = usage.api_calls + (operation == "model_call")
-        projected_tool_calls = usage.tool_calls + (operation == "tool_call")
+        projected_tool_calls = usage.tool_calls + self._reserved_tool_calls + (operation == "tool_call")
         violations: list[str] = []
         if self.budget.max_api_calls is not None and projected_api_calls > self.budget.max_api_calls:
             violations.append(f"api_calls={usage.api_calls} limit={self.budget.max_api_calls}")
@@ -148,6 +149,10 @@ class BudgetTracker:
                 )
         if violations:
             raise BudgetExceededError(violations, usage)
+        if operation == "tool_call":
+            self._reserved_tool_calls += 1
+        elif operation == "tool_call_complete":
+            self._reserved_tool_calls = max(0, self._reserved_tool_calls - 1)
         return usage
 
     def snapshot(self, *, status: str) -> dict[str, Any]:

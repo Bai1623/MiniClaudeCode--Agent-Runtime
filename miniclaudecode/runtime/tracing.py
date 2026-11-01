@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -132,6 +133,7 @@ class TraceRecorder:
         self.trace_dir = Path(trace_dir)
         self.run_id: str | None = None
         self.trace_file: Path | None = None
+        self._lock = threading.Lock()
 
     def set_trace_dir(self, trace_dir: str | Path) -> None:
         """Route subsequent trace files to a specific directory."""
@@ -160,21 +162,22 @@ class TraceRecorder:
         if not self.enabled:
             return
 
-        if self.trace_file is None or self.run_id != run_id:
-            self.run_id = run_id
-            self.trace_dir.mkdir(parents=True, exist_ok=True)
-            self.trace_file = self.trace_dir / f"{run_id}.jsonl"
+        with self._lock:
+            if self.trace_file is None or self.run_id != run_id:
+                self.run_id = run_id
+                self.trace_dir.mkdir(parents=True, exist_ok=True)
+                self.trace_file = self.trace_dir / f"{run_id}.jsonl"
 
-        event = build_tool_call_event(
-            run_id=run_id,
-            turn=turn,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            params=params,
-            result=result,
-            started_at=started_at,
-            ended_at=ended_at,
-        )
+            event = build_tool_call_event(
+                run_id=run_id,
+                turn=turn,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                params=params,
+                result=result,
+                started_at=started_at,
+                ended_at=ended_at,
+            )
 
-        with self.trace_file.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(event, ensure_ascii=False) + "\n")
+            with self.trace_file.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(event, ensure_ascii=False) + "\n")

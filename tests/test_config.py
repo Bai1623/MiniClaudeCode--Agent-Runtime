@@ -86,6 +86,7 @@ class TestLoadConfig(unittest.TestCase):
                     },
                     "tool_runtime": {
                         "max_tool_result_chars": 100,
+                        "max_parallel_read_only_calls": 3,
                         "enabled_tools": ["read_file", "grep"],
                     },
                     "safety": {
@@ -111,6 +112,7 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.model.model, "file-model")
         self.assertEqual(config.model.max_turns, 11)
         self.assertEqual(config.tool_runtime.max_tool_result_chars, 100)
+        self.assertEqual(config.tool_runtime.max_parallel_read_only_calls, 3)
         self.assertEqual(config.tool_runtime.enabled_tools, ["read_file", "grep"])
         self.assertEqual(config.safety.workspace_root, "repo")
         self.assertEqual(config.safety.permission_mode, PermissionMode.PLAN)

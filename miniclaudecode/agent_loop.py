@@ -22,6 +22,7 @@ Mini flow (synchronous, simplified):
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, TextIO, cast
@@ -196,26 +197,58 @@ class AgentLoop:
         return tool_calls, text_parts
 
     def _execute_tool_calls(self, tool_calls: list[dict], turn: int, run_id: str) -> None:
-        """Execute each tool call through ToolRuntime, append results."""
+        """Execute read-only groups concurrently while preserving response order."""
         tool_results = []
-        for call in tool_calls:
-            AgentLoop._check_budget(self, "tool_call")
-            execution = self.tool_runtime.invoke(call, turn=turn, run_id=run_id)
-            AgentLoop._check_budget(self, "usage")
-            result = execution.result
-            output_preview = result.output
-            if len(output_preview) > 300:
-                output_preview = output_preview[:300] + "..."
-            status = "ERROR" if result.is_error else "OK"
-            self.output.write(f"  -> [{status}] {output_preview}\n")
-            self.output.flush()
-            tool_results.append(execution.to_api_result())
+        for calls in AgentLoop._tool_call_groups(self, tool_calls):
+            executions = AgentLoop._execute_tool_call_group(self, calls, turn=turn, run_id=run_id)
+            for execution in executions:
+                AgentLoop._check_budget(self, "tool_call_complete")
+                AgentLoop._check_budget(self, "usage")
+                result = execution.result
+                output_preview = result.output
+                if len(output_preview) > 300:
+                    output_preview = output_preview[:300] + "..."
+                status = "ERROR" if result.is_error else "OK"
+                self.output.write(f"  -> [{status}] {output_preview}\n")
+                self.output.flush()
+                tool_results.append(execution.to_api_result())
 
         # Append all tool results as a single user message (Anthropic API format)
         self.context.messages.append({
             "role": "user",
             "content": tool_results,
         })
+
+    def _tool_call_groups(self, tool_calls: list[dict]) -> list[list[dict]]:
+        groups: list[list[dict]] = []
+        read_only_group: list[dict] = []
+        for call in tool_calls:
+            if AgentLoop._is_read_only_call(self, call):
+                read_only_group.append(call)
+                continue
+            if read_only_group:
+                groups.append(read_only_group)
+                read_only_group = []
+            groups.append([call])
+        if read_only_group:
+            groups.append(read_only_group)
+        return groups
+
+    def _is_read_only_call(self, call: dict) -> bool:
+        registry = getattr(self, "registry", None)
+        tool = registry.get(call.get("name", "")) if registry is not None else None
+        return bool(tool is not None and tool.is_read_only)
+
+    def _execute_tool_call_group(self, calls: list[dict], *, turn: int, run_id: str) -> list[Any]:
+        for _ in calls:
+            AgentLoop._check_budget(self, "tool_call")
+        config = getattr(self, "config", self.context.config)
+        limit = max(1, config.tool_runtime.max_parallel_read_only_calls)
+        if len(calls) == 1 or limit == 1:
+            return [self.tool_runtime.invoke(call, turn=turn, run_id=run_id) for call in calls]
+        with ThreadPoolExecutor(max_workers=min(limit, len(calls))) as executor:
+            futures = [executor.submit(self.tool_runtime.invoke, call, turn, run_id) for call in calls]
+            return [future.result() for future in futures]
 
     def _check_budget(self, operation: str) -> None:
         guard = getattr(self, "budget_guard", None)

@@ -119,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-turns", type=int, default=None,
         help="Max agent loop turns per message.",
     )
+    parser.add_argument("--max-parallel-read-only-calls", type=int, default=None)
     parser.add_argument(
         "--list-runs",
         action="store_true",
@@ -318,6 +319,7 @@ def build_config(args: argparse.Namespace) -> Config:
             "model.model": args.model,
             "safety.permission_mode": args.mode,
             "model.max_turns": args.max_turns,
+            "tool_runtime.max_parallel_read_only_calls": args.max_parallel_read_only_calls,
             "harness.max_repair_rounds": args.max_repair_rounds,
             "harness.repair_backoff_initial_seconds": args.repair_backoff_initial_seconds,
             "harness.repair_backoff_multiplier": args.repair_backoff_multiplier,
