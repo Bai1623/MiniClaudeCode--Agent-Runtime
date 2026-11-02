@@ -377,6 +377,12 @@ python -m miniclaudecode --compare-evals \
   --comparison-output reports/calculator-v2
 ```
 
+只读工具并发的离线消融实验不调用模型 API，会运行真实的 AgentLoop 工具调度路径，并生成成功率、平均耗时、token 和工具错误率的 JSON/Markdown 报告：
+
+```bash
+python scripts/run_parallel_tool_ablation.py --trials 5
+```
+
 命令会生成 `reports/calculator-v2.json` 和 `reports/calculator-v2.md`。`outcome` 汇总可用指标的方向：`improved`、`regressed`、`mixed`、`unchanged` 或 `insufficient_data`；相对变化在 baseline 为零时标记为不可用。
 
 内置确定性 grader：
