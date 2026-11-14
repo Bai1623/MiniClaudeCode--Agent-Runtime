@@ -119,6 +119,7 @@ Agent 如果每次任务都重新扫描项目，会浪费上下文，也无法�
 | Summarizer | 不依赖 LLM，确定性提取 Python symbol、Markdown heading 和文本预览 |
 | ContextBuilder | 根据当前任务关键词选择相关文件摘要、工程决策和历史任务 |
 | Context compression | 按字符预算裁剪 task memory、decision 和 file summary |
+| AgentLoop 接入 | 每轮自动将命中的 memory 注入 system prompt，并记录来源、选择理由与 run ID |
 | CLI 接入 | 支持 memory index、memory context 和 memory list |
 | Harness 接入 | Harness 完成后写入 TaskMemory |
 | GitWorkflow 接入 | GitWorkflow 分析结果写入 TaskMemory |
@@ -132,6 +133,7 @@ Agent 如果每次任务都重新扫描项目，会浪费上下文，也无法�
   decisions/
   tasks/
   context/
+    injections.jsonl
 ```
 
 ## 快速开始
@@ -414,6 +416,8 @@ python -m miniclaudecode --memory-context "优化 ToolRuntime 的错误分类"
 ```bash
 python -m miniclaudecode --list-memory
 ```
+
+正常运行 AgentLoop 时，命中的记忆会自动加入本轮 system prompt；每次注入的来源和选择理由会追加到 `.miniclaudecode/memory/context/injections.jsonl`，便于复盘检索质量。
 
 推荐演示流程：
 

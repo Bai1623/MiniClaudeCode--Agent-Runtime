@@ -178,10 +178,12 @@ class BashTool(Tool):
 
 
 def _normalize_command(command: str) -> str:
-    if sys.platform == "win32" and command == "python3":
-        return "python"
+    if sys.platform == "win32" and (command == "python" or command == "python3"):
+        return f'"{sys.executable}"'
+    if sys.platform == "win32" and command.startswith("python "):
+        return f'"{sys.executable}"' + command[len("python") :]
     if sys.platform == "win32" and command.startswith("python3 "):
-        return "python " + command[len("python3 ") :]
+        return f'"{sys.executable}"' + command[len("python3") :]
     return command
 
 

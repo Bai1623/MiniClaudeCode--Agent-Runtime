@@ -49,6 +49,11 @@ class MemoryStore:
     def context_dir(self) -> Path:
         return self.base_dir / "context"
 
+    @property
+    def context_injections_path(self) -> Path:
+        """Path for append-only records of memory injected into agent prompts."""
+        return self.context_dir / "injections.jsonl"
+
     def ensure_dirs(self) -> Path:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         for directory in (

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import time
 import unittest
@@ -168,6 +169,13 @@ class TestBashTool(unittest.TestCase):
         self.assertTrue(result.is_error)
         self.assertEqual(result.error_type, "timeout_error")
         self.assertTrue(result.metadata["process_tree_terminated"])
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows-specific interpreter normalization")
+    def test_execute_uses_current_python_for_python3_command(self):
+        result = self.tool.execute({"command": "python3 -c \"print('ok')\""})
+
+        self.assertFalse(result.is_error)
+        self.assertEqual(result.output.strip(), "ok")
 
 
 class TestFileReadTool(unittest.TestCase):

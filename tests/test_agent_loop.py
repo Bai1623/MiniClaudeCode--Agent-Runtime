@@ -6,7 +6,9 @@ surrounding components that don't need network access.
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -21,6 +23,7 @@ if "anthropic" not in sys.modules:
 from miniclaudecode.agent_loop import AgentLoop
 from miniclaudecode.config import Config, PermissionMode
 from miniclaudecode.context import SUMMARY_START, ConversationContext
+from miniclaudecode.memory import ContextBuilder, FileSummary, MemoryStore, ProjectSummary
 from miniclaudecode.permissions import PermissionGate
 from miniclaudecode.runtime.tool_runtime import ToolExecution
 from miniclaudecode.runtime.tracing import TraceRecorder
@@ -211,6 +214,67 @@ class TestToolResultDataclass(unittest.TestCase):
 
 
 class TestAgentLoopRuntimeIntegration(unittest.TestCase):
+    def test_run_injects_selected_memory_and_records_selection_reasons(self):
+        response = SimpleNamespace(content=[SimpleNamespace(type="text", text="done")])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(f"{tmpdir}/memory")
+            store.write_project_summary(
+                ProjectSummary(
+                    name="miniClaudeCode",
+                    updated_at="2026-11-14T00:00:00Z",
+                    modules=["memory"],
+                    capabilities=["context injection"],
+                    entrypoints=["python -m miniclaudecode"],
+                    test_commands=["python -m unittest discover"],
+                )
+            )
+            store.write_file_summary(
+                FileSummary(
+                    path="miniclaudecode/memory/context_builder.py",
+                    sha256="abc123",
+                    size_bytes=1,
+                    updated_at="2026-11-14T00:00:00Z",
+                    language="python",
+                    symbols=["ContextBuilder"],
+                    summary="Builds memory context for an agent task.",
+                )
+            )
+            agent = AgentLoop(
+                config=Config(permission_mode=PermissionMode.AUTO),
+                client=FakeClient([response]),
+                output=StringIO(),
+                tracer=TraceRecorder(enabled=False),
+                context_builder=ContextBuilder(store),
+            )
+
+            result = agent.run_with_result("Improve memory context")
+            event = json.loads(store.context_injections_path.read_text(encoding="utf-8").strip())
+
+        system_prompt = agent.client.messages.calls[0]["system"]
+        self.assertEqual(result.text, "done")
+        self.assertIn("Retrieved Project Memory", system_prompt)
+        self.assertIn("miniclaudecode/memory/context_builder.py", system_prompt)
+        self.assertEqual(event["run_id"], result.run_id)
+        self.assertEqual(event["sources"][0]["source"], "memory/project.md")
+        self.assertIn("always included", event["sources"][0]["reason"])
+        self.assertIn("matched task keywords", event["sources"][1]["reason"])
+
+    def test_run_keeps_base_prompt_when_memory_is_empty(self):
+        response = SimpleNamespace(content=[SimpleNamespace(type="text", text="done")])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(f"{tmpdir}/memory")
+            agent = AgentLoop(
+                config=Config(permission_mode=PermissionMode.AUTO),
+                client=FakeClient([response]),
+                output=StringIO(),
+                tracer=TraceRecorder(enabled=False),
+                context_builder=ContextBuilder(store),
+            )
+
+            agent.run_with_result("hello")
+
+        self.assertNotIn("Retrieved Project Memory", agent.client.messages.calls[0]["system"])
+
     def test_read_only_calls_run_concurrently_with_stable_result_order(self):
         registry = ToolRegistry()
         registry.register(ReadOnlyStaticTool("read_a"))

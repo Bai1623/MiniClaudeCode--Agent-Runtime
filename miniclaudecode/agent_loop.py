@@ -29,6 +29,8 @@ from typing import Any, Callable, TextIO, cast
 
 from .config import Config
 from .context import ConversationContext
+from .memory import ContextBuilder, ContextInjectionRecorder, MemoryStore
+from .memory.context_injection import has_injectable_memory
 from .permissions import PermissionGate
 from .runtime.model_tracing import ModelCallRecorder
 from .runtime.tool_runtime import ToolRuntime
@@ -67,6 +69,8 @@ class AgentLoop:
         tracer: TraceRecorder | None = None,
         model_tracer: ModelCallRecorder | None = None,
         tool_runtime: ToolRuntime | None = None,
+        context_builder: ContextBuilder | None = None,
+        context_injection_recorder: ContextInjectionRecorder | None = None,
     ) -> None:
         self.config = config or Config()
         self.registry = registry or ToolRegistry.default(config=self.config)
@@ -85,11 +89,17 @@ class AgentLoop:
         )
         self.budget_guard: Callable[[str], Any] | None = None
 
-        system_prompt = build_system_prompt(
+        memory_store = context_builder.store if context_builder is not None else MemoryStore()
+        self.context_builder = context_builder or ContextBuilder(memory_store)
+        self.context_injection_recorder = (
+            context_injection_recorder or ContextInjectionRecorder(memory_store)
+        )
+
+        self._base_system_prompt = build_system_prompt(
             self.registry,
             permission_mode=self.config.permission_mode.value,
         )
-        self.context.set_system_prompt(system_prompt)
+        self.context.set_system_prompt(self._base_system_prompt)
 
     def set_trace_dir(self, trace_dir: str) -> None:
         """Route subsequent tool traces to the provided directory."""
@@ -105,8 +115,9 @@ class AgentLoop:
 
     def run_with_result(self, user_message: str) -> AgentRunResult:
         """Process a user message and return structured run metadata."""
-        self.context.add_user_message(user_message)
         run_id = self.tracer.start_run()
+        self._inject_memory_context(user_message, run_id)
+        self.context.add_user_message(user_message)
         final_text = ""
         turns_completed = 0
 
@@ -142,6 +153,22 @@ class AgentLoop:
             turns=turns_completed,
             reached_max_turns=False,
         )
+
+    def _inject_memory_context(self, user_message: str, run_id: str) -> None:
+        """Refresh this run's system prompt with relevant persisted project memory."""
+        bundle = self.context_builder.build(user_message)
+        if not has_injectable_memory(bundle):
+            self.context.set_system_prompt(self._base_system_prompt)
+            return
+
+        rendered = self.context_builder.render(bundle)
+        self.context.set_system_prompt(
+            f"{self._base_system_prompt}\n\n"
+            "## Retrieved Project Memory\n"
+            "Use this as supporting project context. Prefer current tool output when it conflicts.\n\n"
+            f"{rendered.rstrip()}"
+        )
+        self.context_injection_recorder.record(run_id, bundle, rendered)
 
     def _call_api(self, *, run_id: str, turn: int) -> Any:
         """Call the Anthropic API with streaming output enabled."""
