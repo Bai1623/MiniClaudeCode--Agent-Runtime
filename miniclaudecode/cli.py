@@ -230,6 +230,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--harness-max-api-calls", type=int, default=None)
     parser.add_argument("--harness-max-tool-calls", type=int, default=None)
     parser.add_argument("--harness-max-total-tokens", type=int, default=None)
+    parser.add_argument("--max-context-tokens", type=int, default=None)
     parser.add_argument("--harness-max-duration-seconds", type=float, default=None)
     parser.add_argument("--harness-max-cost-usd", type=float, default=None)
     parser.add_argument(
@@ -319,6 +320,7 @@ def build_config(args: argparse.Namespace) -> Config:
             "model.model": args.model,
             "safety.permission_mode": args.mode,
             "model.max_turns": args.max_turns,
+            "model.max_context_tokens": args.max_context_tokens,
             "tool_runtime.max_parallel_read_only_calls": args.max_parallel_read_only_calls,
             "harness.max_repair_rounds": args.max_repair_rounds,
             "harness.repair_backoff_initial_seconds": args.repair_backoff_initial_seconds,

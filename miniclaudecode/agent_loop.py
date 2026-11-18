@@ -241,10 +241,7 @@ class AgentLoop:
                 tool_results.append(execution.to_api_result())
 
         # Append all tool results as a single user message (Anthropic API format)
-        self.context.messages.append({
-            "role": "user",
-            "content": tool_results,
-        })
+        self.context.add_tool_results(tool_results)
 
     def _tool_call_groups(self, tool_calls: list[dict]) -> list[list[dict]]:
         groups: list[list[dict]] = []

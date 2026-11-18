@@ -20,6 +20,7 @@ class ModelConfig:
     model: str = "claude-sonnet-4-20250514"
     max_turns: int = 30
     max_context_messages: int = 100
+    max_context_tokens: int = 100_000
     input_cost_per_million_usd: float | None = None
     output_cost_per_million_usd: float | None = None
     cache_read_cost_per_million_usd: float | None = None
@@ -86,6 +87,7 @@ class Config:
         harness: HarnessConfig | None = None,
         max_turns: int | None = None,
         max_context_messages: int | None = None,
+        max_context_tokens: int | None = None,
         max_output_chars: int | None = None,
         max_tool_result_chars: int | None = None,
         tool_result_head_chars: int | None = None,
@@ -122,6 +124,8 @@ class Config:
             self.model.max_turns = max_turns
         if max_context_messages is not None:
             self.model.max_context_messages = max_context_messages
+        if max_context_tokens is not None:
+            self.model.max_context_tokens = max_context_tokens
         if max_output_chars is not None:
             self.tool_runtime.max_output_chars = max_output_chars
         if max_tool_result_chars is not None:
@@ -181,6 +185,14 @@ class Config:
     @max_context_messages.setter
     def max_context_messages(self, value: int) -> None:
         self.model.max_context_messages = value
+
+    @property
+    def max_context_tokens(self) -> int:
+        return self.model.max_context_tokens
+
+    @max_context_tokens.setter
+    def max_context_tokens(self, value: int) -> None:
+        self.model.max_context_tokens = value
 
     @property
     def max_output_chars(self) -> int:
@@ -314,6 +326,7 @@ def _apply_env(config: Config, env: Mapping[str, str]) -> None:
         "MINICLAUDECODE_MODEL": "model.model",
         "MINICLAUDECODE_MAX_TURNS": "model.max_turns",
         "MINICLAUDECODE_MAX_CONTEXT_MESSAGES": "model.max_context_messages",
+        "MINICLAUDECODE_MAX_CONTEXT_TOKENS": "model.max_context_tokens",
         "MINICLAUDECODE_MAX_OUTPUT_CHARS": "tool_runtime.max_output_chars",
         "MINICLAUDECODE_MAX_TOOL_RESULT_CHARS": "tool_runtime.max_tool_result_chars",
         "MINICLAUDECODE_TOOL_RESULT_HEAD_CHARS": "tool_runtime.tool_result_head_chars",
@@ -371,6 +384,8 @@ def _apply_value(config: Config, key: str, value: Any) -> None:
         config.model.max_turns = _parse_int(key, value)
     elif key in {"max_context_messages", "model.max_context_messages"}:
         config.model.max_context_messages = _parse_int(key, value)
+    elif key in {"max_context_tokens", "model.max_context_tokens"}:
+        config.model.max_context_tokens = _parse_positive_int(key, value)
     elif key == "model.input_cost_per_million_usd":
         config.model.input_cost_per_million_usd = _parse_optional_float(key, value)
     elif key == "model.output_cost_per_million_usd":

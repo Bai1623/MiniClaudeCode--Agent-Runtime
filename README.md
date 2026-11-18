@@ -463,6 +463,8 @@ d / deny    拒绝执行
 
 配置分为 `ModelConfig`、`ToolRuntimeConfig`、`SafetyConfig` 和 `HarnessConfig`。
 
+`model.max_context_tokens` 是 system prompt 加会话消息的本地保守估算预算（中日韩字符按单 token 估算，其余字符约每 4 个为一个 token）。超过它或 `max_context_messages` 时，旧消息会被摘要化；包含 `tool_use` 的 assistant 消息和紧随其后的 `tool_result` 始终作为一个原子组处理，绝不会只保留其中一侧。
+
 加载优先级：
 
 ```text
@@ -476,7 +478,8 @@ d / deny    拒绝执行
   "model": {
     "model": "claude-sonnet-4-20250514",
     "max_turns": 30,
-    "max_context_messages": 100
+    "max_context_messages": 100,
+    "max_context_tokens": 100000
   },
   "tool_runtime": {
     "max_output_chars": 50000,

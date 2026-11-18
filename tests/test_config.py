@@ -38,6 +38,7 @@ class TestConfigDefaults(unittest.TestCase):
         config = Config(
             model="test-model",
             max_turns=7,
+            max_context_tokens=1234,
             permission_mode="auto",
             max_tool_result_chars=42,
             enabled_tools=["read_file"],
@@ -50,6 +51,7 @@ class TestConfigDefaults(unittest.TestCase):
 
         self.assertEqual(config.model.model, "test-model")
         self.assertEqual(config.max_turns, 7)
+        self.assertEqual(config.max_context_tokens, 1234)
         self.assertEqual(config.permission_mode, PermissionMode.AUTO)
         self.assertEqual(config.tool_runtime.max_tool_result_chars, 42)
         self.assertEqual(config.tool_runtime.enabled_tools, ["read_file"])
@@ -189,6 +191,14 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.safety.allowed_commands, ["git status", "git diff"])
         self.assertEqual(config.safety.denied_patterns, ["rm -rf /", "git reset --hard"])
         self.assertEqual(config.tool_runtime.disabled_tools, ["bash", "write_file"])
+
+    def test_context_token_budget_accepts_file_and_environment_values(self):
+        config = load_config(
+            env={"MINICLAUDECODE_MAX_CONTEXT_TOKENS": "4321"},
+            cli_overrides={"model.max_context_tokens": 1234},
+        )
+
+        self.assertEqual(config.model.max_context_tokens, 1234)
 
     def test_invalid_json_config_raises(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -3,6 +3,8 @@
 model = "claude-sonnet-4-20250514"
 max_turns = 30
 max_context_messages = 100
+# Total request budget (system prompt plus messages), estimated locally without a tokenizer API.
+max_context_tokens = 100000
 # input_cost_per_million_usd = 3.0
 # output_cost_per_million_usd = 15.0
 # cache_read_cost_per_million_usd = 0.3

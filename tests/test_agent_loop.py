@@ -179,6 +179,45 @@ class TestConversationContext(unittest.TestCase):
         self.assertIn("msg 10", summaries[0]["content"])
         self.assertEqual([msg["content"] for msg in msgs[-3:]], ["msg 11", "msg 12", "msg 13"])
 
+    def test_token_budget_compacts_before_message_limit(self):
+        ctx = ConversationContext(config=Config(max_context_messages=100, max_context_tokens=240))
+        ctx.set_system_prompt("system prompt " * 5)
+        for index in range(4):
+            ctx.add_user_message("long context payload " * 10 + str(index))
+
+        self.assertIn(SUMMARY_START, ctx.messages[1]["content"])
+        self.assertLessEqual(ctx.estimated_tokens(), 240)
+
+    def test_compaction_keeps_tool_use_and_result_together(self):
+        ctx = ConversationContext(config=Config(max_context_messages=5, max_context_tokens=10_000))
+        ctx.add_user_message("initial request")
+        ctx.add_assistant_message([
+            {"type": "tool_use", "id": "toolu_1", "name": "read_file", "input": {}},
+        ])
+        ctx.add_tool_results([
+            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"},
+        ])
+        ctx.add_user_message("follow-up request")
+
+        messages = ctx.get_api_messages()
+        tool_use_index = next(
+            index for index, message in enumerate(messages) if _has_block(message, "tool_use")
+        )
+        self.assertTrue(_has_block(messages[tool_use_index + 1], "tool_result"))
+
+    def test_tiny_message_limit_never_splits_tool_pair(self):
+        ctx = ConversationContext(config=Config(max_context_messages=1, max_context_tokens=10_000))
+        ctx.add_assistant_message([
+            {"type": "tool_use", "id": "toolu_1", "name": "read_file", "input": {}},
+        ])
+        ctx.add_tool_results([
+            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"},
+        ])
+        ctx.add_user_message("new request")
+
+        self.assertEqual(len(ctx.get_api_messages()), 1)
+        self.assertEqual(ctx.get_api_messages()[0]["content"], "new request")
+
     def test_system_prompt(self):
         ctx = ConversationContext(config=Config())
         ctx.set_system_prompt("You are helpful.")
@@ -424,3 +463,8 @@ class TestAgentLoopRuntimeIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _has_block(message, block_type):
+    content = message["content"]
+    return isinstance(content, list) and any(block.get("type") == block_type for block in content)
