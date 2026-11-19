@@ -47,6 +47,46 @@ class TestContextBuilder(unittest.TestCase):
 
             self.assertEqual([item.path for item in bundle.file_summaries], [relevant.path])
 
+    def test_build_prefers_exact_path_over_summary_keyword_match(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory")
+            path_match = _file_summary(
+                "miniclaudecode/runtime/context_budget.py",
+                symbols=["Budget"],
+                summary="Tracks request limits.",
+            )
+            keyword_match = _file_summary(
+                "miniclaudecode/runtime/other.py",
+                symbols=["Other"],
+                summary="context budget context budget context budget",
+            )
+            store.write_file_summary(keyword_match)
+            store.write_file_summary(path_match)
+
+            bundle = ContextBuilder(store).build("fix runtime/context_budget.py")
+
+            self.assertEqual([item.path for item in bundle.file_summaries], [path_match.path, keyword_match.path])
+
+    def test_build_prefers_symbol_over_plain_text_keyword_match(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory")
+            symbol_match = _file_summary(
+                "miniclaudecode/runtime/context.py",
+                symbols=["ContextBuilder"],
+                summary="Builds a prompt.",
+            )
+            keyword_match = _file_summary(
+                "miniclaudecode/runtime/other.py",
+                symbols=["Other"],
+                summary="ContextBuilder ContextBuilder ContextBuilder",
+            )
+            store.write_file_summary(keyword_match)
+            store.write_file_summary(symbol_match)
+
+            bundle = ContextBuilder(store).build("ContextBuilder")
+
+            self.assertEqual([item.path for item in bundle.file_summaries], [symbol_match.path, keyword_match.path])
+
     def test_build_prefers_recent_task_memories(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = MemoryStore(Path(tmpdir) / "memory")
@@ -72,6 +112,28 @@ class TestContextBuilder(unittest.TestCase):
             store.write_task_memory(_task_memory("task-001", "Old memory context work"))
 
             bundle = ContextBuilder(store, max_task_memories=1).build("memory context")
+
+            self.assertEqual([item.id for item in bundle.task_memories], ["task-001"])
+
+    def test_build_uses_changed_path_signal_for_task_memory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory")
+            store.write_task_memory(
+                _task_memory(
+                    "task-009",
+                    "Recent unrelated work",
+                    changed_files=["miniclaudecode/tools/bash_tool.py"],
+                )
+            )
+            store.write_task_memory(
+                _task_memory(
+                    "task-001",
+                    "Earlier implementation",
+                    changed_files=["miniclaudecode/runtime/context_budget.py"],
+                )
+            )
+
+            bundle = ContextBuilder(store, max_task_memories=1).build("runtime/context_budget.py")
 
             self.assertEqual([item.id for item in bundle.task_memories], ["task-001"])
 

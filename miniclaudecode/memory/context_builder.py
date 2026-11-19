@@ -27,6 +27,11 @@ ENGINEERING_KEYWORDS = {
     "tool",
     "workflow",
 }
+PATH_WEIGHT = 6
+SYMBOL_WEIGHT = 5
+KEYWORD_WEIGHT = 2
+RECENCY_WEIGHT = 1
+ENGINEERING_DECISION_WEIGHT = 1
 
 
 class ContextBuilder:
@@ -92,7 +97,7 @@ class ContextBuilder:
 
     def _select_file_summaries(self, keywords: set[str]) -> list[FileSummary]:
         scored = [
-            (_score_text(keywords, item.path, item.language, " ".join(item.symbols), item.summary), item)
+            (_file_score(keywords, item), item)
             for item in self.store.list_file_summaries()
         ]
         return [
@@ -102,25 +107,11 @@ class ContextBuilder:
         ][: self.max_file_summaries]
 
     def _select_decisions(self, keywords: set[str]) -> list[DecisionRecord]:
-        scored = []
-        for item in self.store.list_decisions():
-            text_score = _score_text(
-                keywords,
-                item.id,
-                item.title,
-                item.context,
-                item.decision,
-                " ".join(item.consequences),
-            )
-            engineering_score = _score_text(
-                ENGINEERING_KEYWORDS,
-                item.id,
-                item.title,
-                item.context,
-                item.decision,
-            )
-            score = text_score + min(engineering_score, 3)
-            scored.append((score, item))
+        records = self.store.list_decisions()
+        scored = [
+            (_decision_score(keywords, item, index), item)
+            for index, item in enumerate(sorted(records, key=lambda record: record.date, reverse=True))
+        ]
 
         return [
             item
@@ -129,24 +120,14 @@ class ContextBuilder:
         ][: self.max_decisions]
 
     def _select_task_memories(self, keywords: set[str]) -> list[TaskMemory]:
+        records = sorted(self.store.list_task_memories(), key=lambda item: item.id, reverse=True)
         scored = [
-            (
-                _score_text(
-                    keywords,
-                    item.id,
-                    item.goal,
-                    " ".join(item.changed_files),
-                    " ".join(item.tests),
-                    item.result,
-                    item.summary,
-                ),
-                item,
-            )
-            for item in self.store.list_task_memories()
+            (_task_memory_score(keywords, item, index), item)
+            for index, item in enumerate(records)
         ]
         return [
             item
-            for _, item in sorted(scored, key=lambda pair: (pair[0], pair[1].id), reverse=True)
+            for _, item in sorted(scored, key=lambda pair: (-pair[0], pair[1].id), reverse=False)
         ][: self.max_task_memories]
 
     def _fit_budget(self, bundle: ContextBundle, max_chars: int) -> ContextBundle:
@@ -261,11 +242,13 @@ def _render_task_memories(items: list[TaskMemory]) -> str:
 
 
 def _keywords(text: str) -> set[str]:
-    return {
-        token.lower()
-        for token in re.findall(r"[A-Za-z0-9_./-]+", text)
-        if len(token) >= 2
-    }
+    keywords: set[str] = set()
+    for token in re.findall(r"[A-Za-z0-9_./-]+", text):
+        normalized = token.lower()
+        if len(normalized) >= 2:
+            keywords.add(normalized)
+        keywords.update(part for part in re.findall(r"[a-z0-9]+", normalized) if len(part) >= 2)
+    return keywords
 
 
 def _score_text(keywords: set[str], *parts: str) -> int:
@@ -278,6 +261,70 @@ def _score_text(keywords: set[str], *parts: str) -> int:
         if keyword in haystack:
             score += 1
     return score
+
+
+def _file_score(keywords: set[str], item: FileSummary) -> int:
+    return (
+        PATH_WEIGHT * _score_path(keywords, item.path)
+        + SYMBOL_WEIGHT * _score_text(keywords, *item.symbols)
+        + KEYWORD_WEIGHT * _score_text(keywords, item.language, item.summary)
+    )
+
+
+def _decision_score(keywords: set[str], item: DecisionRecord, recency_rank: int) -> int:
+    keyword_score = _score_text(
+        keywords,
+        item.id,
+        item.title,
+        item.context,
+        item.decision,
+        " ".join(item.consequences),
+    )
+    engineering_score = _score_text(
+        ENGINEERING_KEYWORDS,
+        item.id,
+        item.title,
+        item.context,
+        item.decision,
+    )
+    relevance = (
+        KEYWORD_WEIGHT * keyword_score
+        + ENGINEERING_DECISION_WEIGHT * min(engineering_score, 3)
+    )
+    return relevance + _recency_bonus(recency_rank) if relevance else 0
+
+
+def _task_memory_score(keywords: set[str], item: TaskMemory, recency_rank: int) -> int:
+    return (
+        PATH_WEIGHT * _score_paths(keywords, item.changed_files)
+        + KEYWORD_WEIGHT
+        * _score_text(keywords, item.id, item.goal, " ".join(item.tests), item.result, item.summary)
+        + _recency_bonus(recency_rank)
+    )
+
+
+def _score_paths(keywords: set[str], paths: Iterable[str]) -> int:
+    return sum(_score_path(keywords, path) for path in paths)
+
+
+def _score_path(keywords: set[str], path: str) -> int:
+    normalized_path = path.lower()
+    path_terms = set(re.findall(r"[a-z0-9]+", normalized_path))
+    score = 0
+    for keyword in keywords:
+        normalized_keyword = keyword.lower()
+        keyword_terms = set(re.findall(r"[a-z0-9]+", normalized_keyword))
+        if normalized_keyword == normalized_path:
+            score += 3
+        elif normalized_keyword in normalized_path:
+            score += 2
+        elif keyword_terms and keyword_terms <= path_terms:
+            score += 1
+    return score
+
+
+def _recency_bonus(rank: int) -> int:
+    return max(0, 5 - rank) * RECENCY_WEIGHT
 
 
 def _join_or_none(items: Iterable[str]) -> str:

@@ -117,7 +117,7 @@ Agent 如果每次任务都重新扫描项目，会浪费上下文，也无法�
 | MemoryStore | 将记忆写为 Markdown，同时内嵌 JSON 元数据保证结构化读取 |
 | ProjectIndex | 扫描 tracked 和未忽略文件，过滤 `.git`、`.env`、虚拟环境和缓存目录 |
 | Summarizer | 不依赖 LLM，确定性提取 Python symbol、Markdown heading 和文本预览 |
-| ContextBuilder | 根据当前任务关键词选择相关文件摘要、工程决策和历史任务 |
+| ContextBuilder | 以路径、symbol、正文关键词、近期任务和工程决策信号做确定性混合排序 |
 | Context compression | 按字符预算裁剪 task memory、decision 和 file summary |
 | AgentLoop 接入 | 每轮自动将命中的 memory 注入 system prompt，并记录来源、选择理由与 run ID |
 | CLI 接入 | 支持 memory index、memory context 和 memory list |
